@@ -54,3 +54,6 @@ backend/dist/
 .cache/
 tmp/
 temp/
+
+# Git worktrees
+.worktrees/
