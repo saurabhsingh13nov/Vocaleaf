@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { User } from '@/services/auth'
 import DashboardView from '@/views/DashboardView.vue'
@@ -46,7 +46,10 @@ function makeAuthState(overrides?: Partial<ReturnType<typeof useAuth>>): ReturnT
     isAuthenticated: computed(() => user.value !== null),
     isInitialized: ref(true),
     isLoading: ref(false),
+    link: vi.fn(),
+    linkWithGoogle: vi.fn(),
     login: vi.fn(),
+    loginWithGoogle: vi.fn(),
     logout: vi.fn(),
     register: vi.fn(),
     user,
@@ -164,6 +167,196 @@ describe('auth views', () => {
     expect(authState.getErrorMessage).toHaveBeenCalledWith(error)
     expect(wrapper.text()).toContain('Email already registered')
     expect(pushMock).not.toHaveBeenCalled()
+  })
+
+  describe('Google account linking (409 flow)', () => {
+    let googleCallback: ((r: { credential: string }) => void) | undefined
+    let appendSpy: ReturnType<typeof vi.spyOn>
+
+    function setupGoogleMock() {
+      googleCallback = undefined
+      ;(window as any).google = {
+        accounts: {
+          id: {
+            initialize: vi.fn(({ callback }: { callback: typeof googleCallback }) => {
+              googleCallback = callback
+            }),
+            renderButton: vi.fn(),
+          },
+        },
+      }
+      appendSpy = vi.spyOn(document.head, 'appendChild').mockImplementation((el: Node) => {
+        if (el instanceof HTMLScriptElement) el.onload?.(new Event('load'))
+        return el
+      })
+      vi.stubEnv('VITE_GOOGLE_CLIENT_ID', 'fake-client-id')
+    }
+
+    afterEach(() => {
+      appendSpy?.mockRestore()
+      vi.unstubAllEnvs()
+      delete (window as any).google
+    })
+
+    function make409Error() {
+      return Object.assign(new Error('Conflict'), { isAxiosError: true, response: { status: 409 } })
+    }
+
+    function make401Error() {
+      return Object.assign(new Error('Unauthorized'), { isAxiosError: true, response: { status: 401 } })
+    }
+
+    // ── LoginView ──────────────────────────────────────────────────────────
+
+    it('LoginView: shows link-mode form when Google returns 409', async () => {
+      setupGoogleMock()
+      const authState = makeAuthState({ loginWithGoogle: vi.fn().mockRejectedValue(make409Error()) })
+      useAuthMock.mockReturnValue(authState)
+
+      const wrapper = mount(LoginView, { global: { stubs: { RouterLink: true } } })
+      await flushPromises()
+      await googleCallback!({ credential: 'fake-token' })
+      await flushPromises()
+
+      expect(wrapper.text()).toContain('Link your accounts')
+      expect(wrapper.text()).not.toContain('Welcome back')
+    })
+
+    it('LoginView: correct password links accounts and navigates to dashboard', async () => {
+      setupGoogleMock()
+      const authState = makeAuthState({
+        loginWithGoogle: vi.fn().mockRejectedValue(make409Error()),
+        linkWithGoogle: vi.fn().mockResolvedValue(sampleUser),
+      })
+      useAuthMock.mockReturnValue(authState)
+
+      const wrapper = mount(LoginView, { global: { stubs: { RouterLink: true } } })
+      await flushPromises()
+      await googleCallback!({ credential: 'fake-token' })
+      await flushPromises()
+
+      await wrapper.get('input[type="password"]').setValue('correctpassword')
+      await wrapper.get('form').trigger('submit.prevent')
+      await flushPromises()
+
+      expect(authState.linkWithGoogle).toHaveBeenCalledWith('fake-token', 'correctpassword')
+      expect(pushMock).toHaveBeenCalledWith({ name: 'dashboard' })
+    })
+
+    it('LoginView: wrong password shows inline error', async () => {
+      setupGoogleMock()
+      const authState = makeAuthState({
+        loginWithGoogle: vi.fn().mockRejectedValue(make409Error()),
+        linkWithGoogle: vi.fn().mockRejectedValue(make401Error()),
+      })
+      useAuthMock.mockReturnValue(authState)
+
+      const wrapper = mount(LoginView, { global: { stubs: { RouterLink: true } } })
+      await flushPromises()
+      await googleCallback!({ credential: 'fake-token' })
+      await flushPromises()
+
+      await wrapper.get('input[type="password"]').setValue('wrongpassword')
+      await wrapper.get('form').trigger('submit.prevent')
+      await flushPromises()
+
+      expect(wrapper.text()).toContain('Incorrect password')
+      expect(pushMock).not.toHaveBeenCalled()
+    })
+
+    it('LoginView: cancel returns to normal login form', async () => {
+      setupGoogleMock()
+      const authState = makeAuthState({ loginWithGoogle: vi.fn().mockRejectedValue(make409Error()) })
+      useAuthMock.mockReturnValue(authState)
+
+      const wrapper = mount(LoginView, { global: { stubs: { RouterLink: true } } })
+      await flushPromises()
+      await googleCallback!({ credential: 'fake-token' })
+      await flushPromises()
+
+      expect(wrapper.text()).toContain('Link your accounts')
+      await wrapper.get('button[type="button"]').trigger('click')
+      await flushPromises()
+
+      expect(wrapper.text()).toContain('Welcome back')
+      expect(wrapper.text()).not.toContain('Link your accounts')
+    })
+
+    // ── RegisterView ───────────────────────────────────────────────────────
+
+    it('RegisterView: shows link-mode form when Google returns 409', async () => {
+      setupGoogleMock()
+      const authState = makeAuthState({ loginWithGoogle: vi.fn().mockRejectedValue(make409Error()) })
+      useAuthMock.mockReturnValue(authState)
+
+      const wrapper = mount(RegisterView, { global: { stubs: { RouterLink: true } } })
+      await flushPromises()
+      await googleCallback!({ credential: 'fake-token' })
+      await flushPromises()
+
+      expect(wrapper.text()).toContain('Link your accounts')
+      expect(wrapper.text()).not.toContain('Create your account')
+    })
+
+    it('RegisterView: correct password links accounts and navigates to dashboard', async () => {
+      setupGoogleMock()
+      const authState = makeAuthState({
+        loginWithGoogle: vi.fn().mockRejectedValue(make409Error()),
+        linkWithGoogle: vi.fn().mockResolvedValue(sampleUser),
+      })
+      useAuthMock.mockReturnValue(authState)
+
+      const wrapper = mount(RegisterView, { global: { stubs: { RouterLink: true } } })
+      await flushPromises()
+      await googleCallback!({ credential: 'fake-token' })
+      await flushPromises()
+
+      await wrapper.get('input[type="password"]').setValue('correctpassword')
+      await wrapper.get('form').trigger('submit.prevent')
+      await flushPromises()
+
+      expect(authState.linkWithGoogle).toHaveBeenCalledWith('fake-token', 'correctpassword')
+      expect(pushMock).toHaveBeenCalledWith({ name: 'dashboard' })
+    })
+
+    it('RegisterView: wrong password shows inline error', async () => {
+      setupGoogleMock()
+      const authState = makeAuthState({
+        loginWithGoogle: vi.fn().mockRejectedValue(make409Error()),
+        linkWithGoogle: vi.fn().mockRejectedValue(make401Error()),
+      })
+      useAuthMock.mockReturnValue(authState)
+
+      const wrapper = mount(RegisterView, { global: { stubs: { RouterLink: true } } })
+      await flushPromises()
+      await googleCallback!({ credential: 'fake-token' })
+      await flushPromises()
+
+      await wrapper.get('input[type="password"]').setValue('wrongpassword')
+      await wrapper.get('form').trigger('submit.prevent')
+      await flushPromises()
+
+      expect(wrapper.text()).toContain('Incorrect password')
+      expect(pushMock).not.toHaveBeenCalled()
+    })
+
+    it('RegisterView: cancel returns to normal registration form', async () => {
+      setupGoogleMock()
+      const authState = makeAuthState({ loginWithGoogle: vi.fn().mockRejectedValue(make409Error()) })
+      useAuthMock.mockReturnValue(authState)
+
+      const wrapper = mount(RegisterView, { global: { stubs: { RouterLink: true } } })
+      await flushPromises()
+      await googleCallback!({ credential: 'fake-token' })
+      await flushPromises()
+
+      expect(wrapper.text()).toContain('Link your accounts')
+      await wrapper.get('button[type="button"]').trigger('click')
+      await flushPromises()
+
+      expect(wrapper.text()).toContain('Create your account')
+      expect(wrapper.text()).not.toContain('Link your accounts')
+    })
   })
 
   it('renders account information and logs out from the dashboard', async () => {

@@ -40,6 +40,11 @@ export async function googleAuth(credential: string) {
   return response.data
 }
 
+export async function linkGoogleAccount(credential: string, password: string) {
+  const response = await api.post<User>('/auth/link-google', { credential, password })
+  return response.data
+}
+
 export async function logout() {
   const response = await api.post<MessageResponse>('/auth/logout')
   return response.data

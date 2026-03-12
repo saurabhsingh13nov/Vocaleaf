@@ -7,6 +7,7 @@ import pytest
 from app.integrations.google_oauth import GoogleUserInfo
 
 GOOGLE_ENDPOINT = "/api/auth/google"
+LINK_ENDPOINT = "/api/auth/link-google"
 
 FAKE_GOOGLE_USER = GoogleUserInfo(
     sub="google-uid-12345",
@@ -100,6 +101,84 @@ class TestGoogleAuthEmailConflict:
 
         assert resp.status_code == 409
         assert "already registered" in resp.json()["detail"].lower()
+
+
+class TestLinkGoogleIdentity:
+    async def test_link_google_success(self, client):
+        await client.post(
+            "/api/auth/register",
+            json={
+                "email": "googleuser@gmail.com",
+                "password": "securepass123",
+                "full_name": "Password User",
+            },
+        )
+
+        with _mock_verify():
+            resp = await client.post(
+                LINK_ENDPOINT,
+                json={"credential": "fake-id-token", "password": "securepass123"},
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["primary_email"] == "googleuser@gmail.com"
+        assert "access_token" in resp.cookies
+        assert "refresh_token" in resp.cookies
+
+    async def test_link_google_wrong_password(self, client):
+        await client.post(
+            "/api/auth/register",
+            json={
+                "email": "googleuser@gmail.com",
+                "password": "securepass123",
+                "full_name": "Password User",
+            },
+        )
+
+        with _mock_verify():
+            resp = await client.post(
+                LINK_ENDPOINT,
+                json={"credential": "fake-id-token", "password": "wrongpassword"},
+            )
+
+        assert resp.status_code == 401
+
+    async def test_link_google_idempotent(self, client, db_session):
+        from sqlalchemy import select
+
+        from app.models.auth_identity import AuthIdentity
+        from app.models.enums import AuthProvider
+
+        await client.post(
+            "/api/auth/register",
+            json={
+                "email": "googleuser@gmail.com",
+                "password": "securepass123",
+                "full_name": "Password User",
+            },
+        )
+
+        with _mock_verify():
+            resp1 = await client.post(
+                LINK_ENDPOINT,
+                json={"credential": "fake-id-token", "password": "securepass123"},
+            )
+            resp2 = await client.post(
+                LINK_ENDPOINT,
+                json={"credential": "fake-id-token", "password": "securepass123"},
+            )
+
+        assert resp1.status_code == 200
+        assert resp2.status_code == 200
+
+        result = await db_session.execute(
+            select(AuthIdentity).where(
+                AuthIdentity.provider == AuthProvider.GOOGLE,
+                AuthIdentity.provider_user_id == "google-uid-12345",
+            )
+        )
+        identities = result.scalars().all()
+        assert len(identities) == 1
 
 
 class TestGoogleAuthProviderUserId:

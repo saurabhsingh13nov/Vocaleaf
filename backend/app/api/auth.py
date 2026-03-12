@@ -9,6 +9,7 @@ from app.db.session import get_db
 from app.models.user import User
 from app.schemas.auth import (
     GoogleAuthRequest,
+    LinkGoogleRequest,
     LoginRequest,
     MessageResponse,
     RegisterRequest,
@@ -20,6 +21,7 @@ from app.services.auth import (
     authenticate_google_user,
     authenticate_user,
     get_user_by_id,
+    link_google_identity,
     register_user,
 )
 from app.api.dependencies import get_current_user
@@ -106,6 +108,33 @@ async def google_auth(
             sub=google_info.sub,
             email=google_info.email,
             full_name=google_info.name,
+            avatar_url=google_info.picture,
+        )
+    except AuthError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
+
+    _set_auth_cookies(response, str(user.id))
+    return user
+
+
+@router.post("/link-google", response_model=UserResponse)
+async def link_google(
+    body: LinkGoogleRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        google_info = verify_google_token(body.credential)
+    except AuthError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
+
+    try:
+        user = await link_google_identity(
+            db,
+            email=google_info.email,
+            password=body.password,
+            sub=google_info.sub,
+            name=google_info.name,
             avatar_url=google_info.picture,
         )
     except AuthError as e:

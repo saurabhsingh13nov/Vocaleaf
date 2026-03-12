@@ -15,6 +15,30 @@ const form = reactive({
 
 const errorMessage = ref('')
 const googleLoaded = ref(false)
+const pendingGoogleCredential = ref('')
+const linkPassword = ref('')
+const linkError = ref('')
+
+async function handleLinkSubmit() {
+  linkError.value = ''
+
+  try {
+    await auth.linkWithGoogle(pendingGoogleCredential.value, linkPassword.value)
+    await router.push({ name: 'dashboard' })
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 401) {
+      linkError.value = 'Incorrect password. Please try again.'
+    } else {
+      linkError.value = auth.getErrorMessage(error)
+    }
+  }
+}
+
+function cancelLink() {
+  pendingGoogleCredential.value = ''
+  linkPassword.value = ''
+  linkError.value = ''
+}
 
 async function handleSubmit() {
   errorMessage.value = ''
@@ -38,8 +62,7 @@ async function handleGoogleCallback(response: { credential: string }) {
     await router.push({ name: 'dashboard' })
   } catch (error) {
     if (axios.isAxiosError(error) && error.response?.status === 409) {
-      errorMessage.value =
-        'This email is already registered with a password. Please sign in with your email and password.'
+      pendingGoogleCredential.value = response.credential
     } else {
       errorMessage.value = auth.getErrorMessage(error)
     }
@@ -89,6 +112,54 @@ onMounted(() => {
             <p class="text-sm font-medium uppercase tracking-[0.3em] text-amber-700 lg:hidden">
               Vocaleaf
             </p>
+
+            <!-- Link mode: shown when Google 409 triggers account linking -->
+            <template v-if="pendingGoogleCredential">
+              <h2 class="mt-4 text-3xl font-semibold text-stone-900">Link your accounts</h2>
+              <p class="mt-2 text-sm text-stone-600">
+                Your Google account uses the same email as an existing Vocaleaf account. Enter your
+                password to link them.
+              </p>
+
+              <form class="mt-8 space-y-5" @submit.prevent="handleLinkSubmit">
+                <label class="block">
+                  <span class="mb-2 block text-sm font-medium text-stone-700">Password</span>
+                  <input
+                    v-model="linkPassword"
+                    class="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 text-stone-900 outline-none transition focus:border-amber-500 focus:ring-4 focus:ring-amber-200/60"
+                    type="password"
+                    autocomplete="current-password"
+                    required
+                  />
+                </label>
+
+                <p
+                  v-if="linkError"
+                  class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+                >
+                  {{ linkError }}
+                </p>
+
+                <button
+                  class="w-full rounded-2xl bg-amber-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-amber-300"
+                  type="submit"
+                  :disabled="auth.isLoading.value"
+                >
+                  {{ auth.isLoading.value ? 'Linking...' : 'Link accounts' }}
+                </button>
+
+                <button
+                  class="w-full rounded-2xl border border-stone-300 px-4 py-3 text-sm font-semibold text-stone-700 transition hover:bg-stone-50"
+                  type="button"
+                  @click="cancelLink"
+                >
+                  Cancel
+                </button>
+              </form>
+            </template>
+
+            <!-- Normal login form -->
+            <template v-else>
             <h2 class="mt-4 text-3xl font-semibold text-stone-900">Welcome back</h2>
             <p class="mt-2 text-sm text-stone-600">
               Sign in with your email and password.
@@ -149,6 +220,7 @@ onMounted(() => {
                 Create one
               </RouterLink>
             </p>
+            </template>
           </div>
         </section>
       </div>

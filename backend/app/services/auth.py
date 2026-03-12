@@ -178,6 +178,42 @@ async def authenticate_google_user(
     return user
 
 
+async def link_google_identity(
+    db: AsyncSession,
+    email: str,
+    password: str,
+    sub: str,
+    name: str | None,
+    avatar_url: str | None,
+) -> User:
+    """Verify password ownership and attach a Google identity to the existing user."""
+    user = await authenticate_user(db, email, password)
+
+    # Idempotent: return if this Google identity is already linked
+    existing = await db.execute(
+        select(AuthIdentity).where(
+            AuthIdentity.provider == AuthProvider.GOOGLE,
+            AuthIdentity.provider_user_id == sub,
+        )
+    )
+    if existing.scalar_one_or_none():
+        return user
+
+    identity = AuthIdentity(
+        user_id=user.id,
+        provider=AuthProvider.GOOGLE,
+        provider_user_id=sub,
+        email=email,
+        password_hash=None,
+        is_primary=False,
+        is_verified=True,
+    )
+    db.add(identity)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
 async def get_user_by_id(db: AsyncSession, user_id: uuid.UUID) -> User | None:
     result = await db.execute(
         select(User).where(

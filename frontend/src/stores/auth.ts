@@ -5,6 +5,7 @@ import { defineStore } from 'pinia'
 import {
   fetchCurrentUser,
   googleAuth as googleAuthRequest,
+  linkGoogleAccount,
   login as loginRequest,
   logout as logoutRequest,
   refreshSession,
@@ -69,6 +70,18 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function linkWithGoogle(credential: string, password: string) {
+    isLoading.value = true
+
+    try {
+      const linkedUser = await linkGoogleAccount(credential, password)
+      user.value = linkedUser
+      return linkedUser
+    } finally {
+      isLoading.value = false
+    }
+  }
+
   async function logout() {
     isLoading.value = true
 
@@ -123,6 +136,7 @@ export const useAuthStore = defineStore('auth', () => {
     isAuthenticated,
     isInitialized,
     isLoading,
+    linkWithGoogle,
     login,
     loginWithGoogle,
     logout,

@@ -32,6 +32,11 @@ class GoogleAuthRequest(BaseModel):
     credential: str
 
 
+class LinkGoogleRequest(BaseModel):
+    credential: str
+    password: str
+
+
 class UserResponse(BaseModel):
     model_config = {"from_attributes": True}
 
