@@ -10,8 +10,8 @@ Vocaleaf is a personalized children's storybook web app. This plan started befor
 - Phase 1 complete: core SQLAlchemy models and the initial Alembic migration exist.
 - Phase 2 complete: email/password auth and JWT cookie auth exist in the FastAPI backend.
 - Phase 3 complete: Vue auth flow, protected routing, and frontend unit tests exist.
-- Phase 4 pending: child profile CRUD has not been implemented yet.
-- Current known gap: frontend unit tests pass, but the repo should keep `npm run build` green as part of the phase 3 baseline.
+- Phase 4 complete: child profiles CRUD — backend (schemas, service, routes, 17 tests) and frontend (service, Pinia store, components, view, 4 tests).
+- `npm run build` and all tests pass.
 
 ## Tech Stack (Locked In)
 

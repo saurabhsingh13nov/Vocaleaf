@@ -79,13 +79,16 @@ async function handleLogout() {
       </section>
 
       <section class="grid gap-6 lg:grid-cols-3">
-        <article class="rounded-[1.75rem] border border-amber-200 bg-amber-50 p-6">
-          <p class="text-sm font-semibold uppercase tracking-[0.25em] text-amber-700">Next</p>
+        <RouterLink
+          :to="{ name: 'children' }"
+          class="block rounded-[1.75rem] border border-amber-200 bg-amber-50 p-6 transition hover:shadow-md"
+        >
+          <p class="text-sm font-semibold uppercase tracking-[0.25em] text-amber-700">Manage</p>
           <h2 class="mt-4 text-xl font-semibold text-amber-950">Child profiles</h2>
           <p class="mt-3 text-sm leading-6 text-amber-900/75">
-            The next product milestone can now build on top of a working authenticated app shell.
+            Create and manage child profiles to personalize stories, themes, and narration.
           </p>
-        </article>
+        </RouterLink>
 
         <article class="rounded-[1.75rem] border border-sky-200 bg-sky-50 p-6">
           <p class="text-sm font-semibold uppercase tracking-[0.25em] text-sky-700">Ready</p>

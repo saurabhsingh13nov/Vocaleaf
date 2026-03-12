@@ -12,13 +12,15 @@ The current product direction is a FastAPI backend plus background workers, Post
 
 ## Current Status
 
-This repository is in an early build stage.
+This repository is in active development — phases 0 through 4 are complete.
 
-- Phases 0 through 3 are complete: project scaffolding, core schema/migration foundation, backend auth, and the frontend auth shell.
-- Phase 4 is still pending. Child profile CRUD has not been implemented yet.
-- Backend foundation exists: FastAPI app, auth endpoints, SQLAlchemy models, Alembic migration, and backend tests.
-- Frontend now has the phase 3 auth flow, protected routing, and frontend unit tests.
-- Architecture and schema docs are ahead of feature implementation by design.
+- **Phase 0:** Project scaffolding — FastAPI + Vue 3 + Docker Compose
+- **Phase 1:** Database models — 17 ORM models, 11 enums, Alembic migration
+- **Phase 2:** Auth backend — Argon2id passwords, JWT cookies, 5 endpoints, 22 tests
+- **Phase 3:** Auth frontend — Vue login/register/dashboard, Pinia store, route guards
+- **Phase 4:** Child profiles CRUD — full-stack create/read/update/delete with ownership isolation
+
+Architecture and schema docs are ahead of feature implementation by design.
 
 ## Tech Stack
 
@@ -99,19 +101,23 @@ npm run build
 Backend:
 
 - health endpoint
-- email/password auth endpoints
-- JWT cookie auth flow
-- initial schema models and migration for core domain tables
+- email/password auth endpoints (register, login, logout, refresh, me)
+- JWT cookie auth flow (access 15min + refresh 7d)
+- child profiles CRUD with per-user ownership enforcement
+- 17 ORM models and Alembic migration for the full domain schema
+- 41 backend tests
 
 Frontend:
 
 - Vue auth flow with login, register, logout, and dashboard routing
-- frontend unit tests for auth store, router guards, and auth views
+- child profiles management page with create/edit/delete
+- Pinia stores for auth and children state
+- 24 frontend unit tests for stores, router guards, auth views, and children views
 - build tooling and lint/type-check setup
 
 Not yet built:
 
-- child profile CRUD
+- Google OAuth
 - story creation and story page APIs
 - async generation workers and provider integrations
 - storage upload/download flows and signed URL handling
