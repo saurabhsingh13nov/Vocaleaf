@@ -48,7 +48,8 @@ cd backend && uv run pytest
 cd backend && uv run pytest tests/test_auth.py -k "test_login"  # Single test
 
 # Frontend
-cd frontend && npm run test             # Vitest
+cd frontend && npm run test:unit        # Vitest
+cd frontend && npm run test:unit -- --run
 cd frontend && npm run lint             # Lint
 ```
 
@@ -78,8 +79,8 @@ The system has three main execution contexts:
 | Data model / ER model | `docs/schema.md` |
 | Auth / OAuth / sessions | `docs/auth.md` |
 | Storage, signed URLs, asset model | `docs/storage.md` |
-| Voice cloning lifecycle | `docs/voice.md` (not yet written) |
-| Story generation pipeline | `docs/story-generation.md` (not yet written) |
+| Voice cloning lifecycle | `docs/voice.md` |
+| Story generation pipeline | `docs/story-generation.md` |
 | Full build plan | `docs/plans/2026-03-11-build-plan.md` |
 
 **Rule:** If a relevant doc doesn't exist yet, create it before introducing major new code paths.
