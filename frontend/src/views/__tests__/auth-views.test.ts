@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -36,20 +36,22 @@ const sampleUser: User = {
   created_at: '2026-03-11T20:00:00Z',
 }
 
-function makeAuthState(overrides?: Partial<ReturnType<typeof useAuth>>) {
+function makeAuthState(overrides?: Partial<ReturnType<typeof useAuth>>): ReturnType<typeof useAuth> {
+  const user = overrides?.user ?? ref<User | null>(null)
+
   return {
     clearUser: vi.fn(),
     fetchUser: vi.fn(),
     getErrorMessage: vi.fn(() => 'Friendly error message'),
-    isAuthenticated: ref(false),
+    isAuthenticated: computed(() => user.value !== null),
     isInitialized: ref(true),
     isLoading: ref(false),
     login: vi.fn(),
     logout: vi.fn(),
     register: vi.fn(),
-    user: ref<User | null>(null),
+    user,
     ...overrides,
-  }
+  } as unknown as ReturnType<typeof useAuth>
 }
 
 describe('auth views', () => {

@@ -2,7 +2,16 @@
 
 ## Context
 
-Vocaleaf is a personalized children's storybook web app. The architecture and data model have been designed (see `docs/` and `Agents.md`) but no code exists yet. This plan lays out how to build the entire application from scratch, phase by phase, with Vue.js learning integrated throughout.
+Vocaleaf is a personalized children's storybook web app. This plan started before implementation and still serves as the roadmap for the remaining work. The repository now contains the completed foundation for phases 0 through 3, and the later phases below remain the forward-looking build sequence.
+
+## Current Repo Status (March 12, 2026)
+
+- Phase 0 complete: backend/frontend scaffolding, local tooling, and Docker Compose exist.
+- Phase 1 complete: core SQLAlchemy models and the initial Alembic migration exist.
+- Phase 2 complete: email/password auth and JWT cookie auth exist in the FastAPI backend.
+- Phase 3 complete: Vue auth flow, protected routing, and frontend unit tests exist.
+- Phase 4 pending: child profile CRUD has not been implemented yet.
+- Current known gap: frontend unit tests pass, but the repo should keep `npm run build` green as part of the phase 3 baseline.
 
 ## Tech Stack (Locked In)
 

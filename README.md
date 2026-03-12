@@ -14,6 +14,8 @@ The current product direction is a FastAPI backend plus background workers, Post
 
 This repository is in an early build stage.
 
+- Phases 0 through 3 are complete: project scaffolding, core schema/migration foundation, backend auth, and the frontend auth shell.
+- Phase 4 is still pending. Child profile CRUD has not been implemented yet.
 - Backend foundation exists: FastAPI app, auth endpoints, SQLAlchemy models, Alembic migration, and backend tests.
 - Frontend now has the phase 3 auth flow, protected routing, and frontend unit tests.
 - Architecture and schema docs are ahead of feature implementation by design.
@@ -106,6 +108,14 @@ Frontend:
 - Vue auth flow with login, register, logout, and dashboard routing
 - frontend unit tests for auth store, router guards, and auth views
 - build tooling and lint/type-check setup
+
+Not yet built:
+
+- child profile CRUD
+- story creation and story page APIs
+- async generation workers and provider integrations
+- storage upload/download flows and signed URL handling
+- voice sample upload and voice cloning workflows
 
 ## Notes
 
