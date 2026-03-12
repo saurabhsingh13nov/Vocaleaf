@@ -19,9 +19,8 @@ if config.config_file_name is not None:
 from app.core.config import settings  # noqa: E402
 from app.db.base import Base  # noqa: E402
 
-# Import all models here so Alembic can detect them for autogenerate.
-# As you create new models, add imports below:
-# from app.models import user, child, story  # noqa: F401
+# Import all models so Alembic can detect them for autogenerate.
+from app.models import *  # noqa: F401, F403
 
 target_metadata = Base.metadata
 
