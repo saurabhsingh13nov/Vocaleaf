@@ -12,13 +12,14 @@ The current product direction is a FastAPI backend plus background workers, Post
 
 ## Current Status
 
-This repository is in active development — phases 0 through 4 are complete.
+This repository is in active development — phases 0 through 5 are complete.
 
 - **Phase 0:** Project scaffolding — FastAPI + Vue 3 + Docker Compose
 - **Phase 1:** Database models — 17 ORM models, 11 enums, Alembic migration
 - **Phase 2:** Auth backend — Argon2id passwords, JWT cookies, 5 endpoints, 22 tests
 - **Phase 3:** Auth frontend — Vue login/register/dashboard, Pinia store, route guards
 - **Phase 4:** Child profiles CRUD — full-stack create/read/update/delete with ownership isolation
+- **Phase 5:** Google OAuth — Sign in with Google (ID token flow) + account linking flow when email conflicts with an existing password account
 
 Architecture and schema docs are ahead of feature implementation by design.
 
@@ -103,21 +104,22 @@ Backend:
 - health endpoint
 - email/password auth endpoints (register, login, logout, refresh, me)
 - JWT cookie auth flow (access 15min + refresh 7d)
+- Google OAuth — Sign in with Google via ID token; account linking (`POST /api/auth/link-google`) when the email already has a password account
 - child profiles CRUD with per-user ownership enforcement
 - 17 ORM models and Alembic migration for the full domain schema
-- 41 backend tests
+- 49 backend tests
 
 Frontend:
 
 - Vue auth flow with login, register, logout, and dashboard routing
+- Google Sign-In button on login and register pages; link-mode form when a 409 conflict occurs
 - child profiles management page with create/edit/delete
 - Pinia stores for auth and children state
-- 24 frontend unit tests for stores, router guards, auth views, and children views
+- 32 frontend unit tests for stores, router guards, auth views (including link-mode), and children views
 - build tooling and lint/type-check setup
 
 Not yet built:
 
-- Google OAuth
 - story creation and story page APIs
 - async generation workers and provider integrations
 - storage upload/download flows and signed URL handling

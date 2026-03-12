@@ -11,6 +11,7 @@ Vocaleaf is a personalized children's storybook web app. This plan started befor
 - Phase 2 complete: email/password auth and JWT cookie auth exist in the FastAPI backend.
 - Phase 3 complete: Vue auth flow, protected routing, and frontend unit tests exist.
 - Phase 4 complete: child profiles CRUD — backend (schemas, service, routes, 17 tests) and frontend (service, Pinia store, components, view, 4 tests).
+- Phase 5 complete: Google OAuth — Sign in with Google (ID token flow) + account linking flow; 49 backend tests, 32 frontend tests.
 - `npm run build` and all tests pass.
 
 ## Tech Stack (Locked In)
@@ -230,16 +231,18 @@ vocaleaf/
 **Backend:**
 - `app/integrations/google_oauth.py` — verify Google ID token via `google-auth`, return `GoogleUserInfo`
 - `app/services/auth.py` — `authenticate_google_user()`: find by `(GOOGLE, sub)` or create; 409 on email conflict with password account
-- `app/api/auth.py` — `POST /api/auth/google` endpoint, receives ID token from frontend, sets JWT cookies
-- 5 backend tests covering: new user, returning user, invalid token, email conflict, provider_user_id validation
+- `app/services/auth.py` — `link_google_identity()`: verify password ownership, then attach a Google `AuthIdentity` to an existing user (idempotent)
+- `app/api/auth.py` — `POST /api/auth/google` endpoint; `POST /api/auth/link-google` endpoint for the conflict linking flow
+- 8 backend tests covering: new user, returning user, invalid token, email conflict, provider_user_id validation, link success, wrong password, idempotent link
 
 **Frontend:**
 - Google Identity Services JS SDK loaded dynamically in `onMounted`
 - Google Sign-In button on both LoginView and RegisterView with "or" divider
-- `loginWithGoogle()` store action, `googleAuth()` service function
-- 409 conflict shows user-friendly message about existing password account
+- `loginWithGoogle()` and `linkWithGoogle()` store actions; `googleAuth()` and `linkGoogleAccount()` service functions
+- 409 conflict triggers link-mode form (password prompt + Link/Cancel) instead of a dead-end error message; satisfies the auth.md rule against silent auto-merge
+- 8 frontend tests covering link-mode for both views: 409 → link form, correct password → dashboard, wrong password → error, Cancel → normal form
 
-**Verification:** All 46 backend tests pass, all 24 frontend tests pass, frontend builds cleanly.
+**Verification:** All 49 backend tests pass, all 32 frontend tests pass, frontend builds cleanly.
 
 ---
 
