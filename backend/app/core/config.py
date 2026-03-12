@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = "redis://localhost:6379/0"
 
+    # Google OAuth
+    google_client_id: str = ""
+
     # JWT
     jwt_secret_key: str = "change-me-in-production"
     jwt_access_token_expire_minutes: int = 15

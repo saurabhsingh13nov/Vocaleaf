@@ -28,6 +28,10 @@ class LoginRequest(BaseModel):
         return v.strip().lower()
 
 
+class GoogleAuthRequest(BaseModel):
+    credential: str
+
+
 class UserResponse(BaseModel):
     model_config = {"from_attributes": True}
 

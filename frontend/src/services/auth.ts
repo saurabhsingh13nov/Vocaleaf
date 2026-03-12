@@ -35,6 +35,11 @@ export async function login(payload: LoginPayload) {
   return response.data
 }
 
+export async function googleAuth(credential: string) {
+  const response = await api.post<User>('/auth/google', { credential })
+  return response.data
+}
+
 export async function logout() {
   const response = await api.post<MessageResponse>('/auth/logout')
   return response.data

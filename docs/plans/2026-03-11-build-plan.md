@@ -224,21 +224,22 @@ vocaleaf/
 
 ---
 
-### Phase 5: Google OAuth
+### Phase 5: Google OAuth ✅
 **Goal:** "Sign in with Google" button that creates/links accounts.
 
 **Backend:**
-- `app/integrations/google_oauth.py` — exchange auth code for tokens, extract user info
-- Add to `app/api/auth.py`:
-  - `POST /api/auth/google` — receive auth code from frontend, create/find user + auth_identity, set JWT cookies
-- Account linking: if Google email matches existing user, prompt to link (conservative approach from `docs/auth.md`)
+- `app/integrations/google_oauth.py` — verify Google ID token via `google-auth`, return `GoogleUserInfo`
+- `app/services/auth.py` — `authenticate_google_user()`: find by `(GOOGLE, sub)` or create; 409 on email conflict with password account
+- `app/api/auth.py` — `POST /api/auth/google` endpoint, receives ID token from frontend, sets JWT cookies
+- 5 backend tests covering: new user, returning user, invalid token, email conflict, provider_user_id validation
 
 **Frontend:**
-- Install `vue3-google-signin` or use Google's JS SDK
-- Add Google Sign-In button to login/register views
-- Handle the OAuth callback, send auth code to backend
+- Google Identity Services JS SDK loaded dynamically in `onMounted`
+- Google Sign-In button on both LoginView and RegisterView with "or" divider
+- `loginWithGoogle()` store action, `googleAuth()` service function
+- 409 conflict shows user-friendly message about existing password account
 
-**Verification:** Sign in with Google, see dashboard. Sign out, sign in again — same account. Try with an email that already has a password account — should handle linking properly.
+**Verification:** All 46 backend tests pass, all 24 frontend tests pass, frontend builds cleanly.
 
 ---
 

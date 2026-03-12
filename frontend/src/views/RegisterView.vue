@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import axios from 'axios'
+import { onMounted, reactive, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 
 import { useAuth } from '@/composables/useAuth'
@@ -14,6 +15,7 @@ const form = reactive({
 })
 
 const errorMessage = ref('')
+const googleLoaded = ref(false)
 
 async function handleSubmit() {
   errorMessage.value = ''
@@ -29,6 +31,44 @@ async function handleSubmit() {
     errorMessage.value = auth.getErrorMessage(error)
   }
 }
+
+async function handleGoogleCallback(response: { credential: string }) {
+  errorMessage.value = ''
+
+  try {
+    await auth.loginWithGoogle(response.credential)
+    await router.push({ name: 'dashboard' })
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 409) {
+      errorMessage.value =
+        'This email is already registered with a password. Please sign in with your email and password.'
+    } else {
+      errorMessage.value = auth.getErrorMessage(error)
+    }
+  }
+}
+
+onMounted(() => {
+  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
+  if (!clientId) return
+
+  const script = document.createElement('script')
+  script.src = 'https://accounts.google.com/gsi/client'
+  script.async = true
+  script.defer = true
+  script.onload = () => {
+    window.google?.accounts.id.initialize({
+      client_id: clientId,
+      callback: handleGoogleCallback,
+    })
+    window.google?.accounts.id.renderButton(
+      document.getElementById('google-signin-btn-register')!,
+      { theme: 'outline', size: 'large', width: '100%', text: 'signup_with' },
+    )
+    googleLoaded.value = true
+  }
+  document.head.appendChild(script)
+})
 </script>
 
 <template>
@@ -96,6 +136,14 @@ async function handleSubmit() {
                 {{ auth.isLoading.value ? 'Creating account...' : 'Create account' }}
               </button>
             </form>
+
+            <div class="my-6 flex items-center gap-4">
+              <hr class="flex-1 border-slate-200" />
+              <span class="text-xs font-medium uppercase tracking-wider text-slate-400">or</span>
+              <hr class="flex-1 border-slate-200" />
+            </div>
+
+            <div id="google-signin-btn-register" class="flex justify-center"></div>
 
             <p class="mt-6 text-sm text-slate-600">
               Already have an account?

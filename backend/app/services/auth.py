@@ -107,6 +107,77 @@ async def authenticate_user(
     return user
 
 
+async def authenticate_google_user(
+    db: AsyncSession,
+    sub: str,
+    email: str,
+    full_name: str | None,
+    avatar_url: str | None,
+) -> User:
+    """Find or create a user from a verified Google ID token.
+
+    Raises AuthError(409) if the email belongs to an existing password account.
+    """
+    # 1. Check for existing Google identity by (provider, sub)
+    result = await db.execute(
+        select(AuthIdentity).where(
+            AuthIdentity.provider == AuthProvider.GOOGLE,
+            AuthIdentity.provider_user_id == sub,
+        )
+    )
+    identity = result.scalar_one_or_none()
+
+    now = datetime.now(UTC).replace(tzinfo=None)
+
+    if identity:
+        # Returning Google user — update last login
+        user_result = await db.execute(
+            select(User).where(User.id == identity.user_id)
+        )
+        user = user_result.scalar_one()
+        identity.last_login_at = now
+        user.last_login_at = now
+        await db.commit()
+        await db.refresh(user)
+        return user
+
+    # 2. No Google identity — check for email conflict with existing user
+    existing_user = await db.execute(
+        select(User).where(User.primary_email == email)
+    )
+    if existing_user.scalar_one_or_none():
+        raise AuthError(
+            "Email already registered with a different method",
+            status_code=409,
+        )
+
+    # 3. Create new user + Google identity
+    user = User(
+        primary_email=email,
+        full_name=full_name,
+        avatar_url=avatar_url,
+        status=UserStatus.ACTIVE,
+        email_verified_at=now,
+        last_login_at=now,
+    )
+    db.add(user)
+    await db.flush()
+
+    identity = AuthIdentity(
+        user_id=user.id,
+        provider=AuthProvider.GOOGLE,
+        provider_user_id=sub,
+        email=email,
+        password_hash=None,
+        is_primary=True,
+        is_verified=True,
+    )
+    db.add(identity)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
 async def get_user_by_id(db: AsyncSession, user_id: uuid.UUID) -> User | None:
     result = await db.execute(
         select(User).where(

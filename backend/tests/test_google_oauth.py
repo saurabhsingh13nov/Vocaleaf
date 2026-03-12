@@ -1,0 +1,127 @@
+"""Tests for Google OAuth sign-in flow."""
+
+from unittest.mock import patch
+
+import pytest
+
+from app.integrations.google_oauth import GoogleUserInfo
+
+GOOGLE_ENDPOINT = "/api/auth/google"
+
+FAKE_GOOGLE_USER = GoogleUserInfo(
+    sub="google-uid-12345",
+    email="googleuser@gmail.com",
+    name="Google User",
+    picture="https://lh3.googleusercontent.com/photo.jpg",
+    email_verified=True,
+)
+
+
+def _mock_verify(user_info: GoogleUserInfo = FAKE_GOOGLE_USER):
+    """Patch verify_google_token to return the given user info."""
+    return patch(
+        "app.api.auth.verify_google_token",
+        return_value=user_info,
+    )
+
+
+class TestGoogleAuthNewUser:
+    async def test_creates_user_and_sets_cookies(self, client):
+        with _mock_verify():
+            resp = await client.post(
+                GOOGLE_ENDPOINT,
+                json={"credential": "fake-id-token"},
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["primary_email"] == "googleuser@gmail.com"
+        assert data["full_name"] == "Google User"
+        assert data["status"] == "active"
+        assert data["email_verified_at"] is not None
+        assert "access_token" in resp.cookies
+        assert "refresh_token" in resp.cookies
+
+
+class TestGoogleAuthReturningUser:
+    async def test_returns_same_user_on_second_login(self, client):
+        with _mock_verify():
+            resp1 = await client.post(
+                GOOGLE_ENDPOINT,
+                json={"credential": "fake-id-token"},
+            )
+            user_id_1 = resp1.json()["id"]
+
+            resp2 = await client.post(
+                GOOGLE_ENDPOINT,
+                json={"credential": "fake-id-token"},
+            )
+            user_id_2 = resp2.json()["id"]
+
+        assert resp2.status_code == 200
+        assert user_id_1 == user_id_2
+
+
+class TestGoogleAuthInvalidToken:
+    async def test_invalid_credential_returns_400(self, client):
+        from app.services.auth import AuthError
+
+        with patch(
+            "app.api.auth.verify_google_token",
+            side_effect=AuthError("Invalid Google credential: bad token", 400),
+        ):
+            resp = await client.post(
+                GOOGLE_ENDPOINT,
+                json={"credential": "bad-token"},
+            )
+
+        assert resp.status_code == 400
+        assert "Invalid Google credential" in resp.json()["detail"]
+
+
+class TestGoogleAuthEmailConflict:
+    async def test_conflict_with_existing_password_account(self, client):
+        # Register with email/password first
+        await client.post(
+            "/api/auth/register",
+            json={
+                "email": "googleuser@gmail.com",
+                "password": "securepass123",
+                "full_name": "Password User",
+            },
+        )
+
+        # Google login with same email should fail with 409
+        with _mock_verify():
+            resp = await client.post(
+                GOOGLE_ENDPOINT,
+                json={"credential": "fake-id-token"},
+            )
+
+        assert resp.status_code == 409
+        assert "already registered" in resp.json()["detail"].lower()
+
+
+class TestGoogleAuthProviderUserId:
+    async def test_uses_sub_not_email_as_provider_user_id(self, client, db_session):
+        from sqlalchemy import select
+
+        from app.models.auth_identity import AuthIdentity
+        from app.models.enums import AuthProvider
+
+        with _mock_verify():
+            await client.post(
+                GOOGLE_ENDPOINT,
+                json={"credential": "fake-id-token"},
+            )
+
+        result = await db_session.execute(
+            select(AuthIdentity).where(
+                AuthIdentity.provider == AuthProvider.GOOGLE,
+            )
+        )
+        identity = result.scalar_one()
+        assert identity.provider_user_id == "google-uid-12345"
+        assert identity.email == "googleuser@gmail.com"
+        assert identity.password_hash is None
+        assert identity.is_verified is True

@@ -8,12 +8,20 @@ from app.core.security import create_access_token, create_refresh_token, decode_
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.auth import (
+    GoogleAuthRequest,
     LoginRequest,
     MessageResponse,
     RegisterRequest,
     UserResponse,
 )
-from app.services.auth import AuthError, authenticate_user, get_user_by_id, register_user
+from app.integrations.google_oauth import verify_google_token
+from app.services.auth import (
+    AuthError,
+    authenticate_google_user,
+    authenticate_user,
+    get_user_by_id,
+    register_user,
+)
 from app.api.dependencies import get_current_user
 
 import uuid
@@ -74,6 +82,32 @@ async def login(
 ):
     try:
         user = await authenticate_user(db, body.email, body.password)
+    except AuthError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
+
+    _set_auth_cookies(response, str(user.id))
+    return user
+
+
+@router.post("/google", response_model=UserResponse)
+async def google_auth(
+    body: GoogleAuthRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        google_info = verify_google_token(body.credential)
+    except AuthError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
+
+    try:
+        user = await authenticate_google_user(
+            db,
+            sub=google_info.sub,
+            email=google_info.email,
+            full_name=google_info.name,
+            avatar_url=google_info.picture,
+        )
     except AuthError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message)
 
