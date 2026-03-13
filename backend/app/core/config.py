@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     elevenlabs_api_key: str = ""
     elevenlabs_base_url: str = "https://api.elevenlabs.io"
 
+    # Anthropic / Claude
+    anthropic_api_key: str = ""
+    anthropic_model: str = "claude-sonnet-4-20250514"
+
     # Google OAuth
     google_client_id: str = ""
 

@@ -249,9 +249,95 @@
     box-shadow: var(--app-shadow-soft);
   }
 
+  .theme-pill {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    border: 1px solid var(--app-border);
+    background: var(--app-surface-strong);
+    color: var(--app-muted);
+    cursor: pointer;
+    transition:
+      border-color 160ms ease,
+      background-color 160ms ease,
+      color 160ms ease,
+      transform 160ms ease;
+  }
+
+  .theme-pill:hover {
+    border-color: var(--app-accent);
+    color: var(--app-ink);
+    transform: translateY(-1px);
+  }
+
+  .theme-pill-active {
+    background: var(--app-accent-soft);
+    border-color: var(--app-accent);
+    color: var(--app-accent-strong);
+  }
+
+  .generating-animation {
+    display: flex;
+    justify-content: center;
+    gap: 0.4rem;
+  }
+
+  .generating-animation .dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--app-accent);
+    animation: story-dot-pulse 1.2s ease-in-out infinite;
+  }
+
+  .generating-animation .dot:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+
+  .generating-animation .dot:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+
+  .story-page-text {
+    font-family: 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', serif;
+    font-size: 1.02rem;
+    line-height: 1.8;
+  }
+
+  .story-illustration-placeholder {
+    aspect-ratio: 4 / 3;
+    display: grid;
+    place-items: center;
+    border-radius: 1.25rem;
+    border: 1px dashed var(--app-border-strong);
+    background:
+      linear-gradient(180deg, rgba(255, 253, 249, 0.98), rgba(244, 237, 227, 0.92)),
+      radial-gradient(circle at top, rgba(184, 109, 68, 0.08), transparent 60%);
+    color: var(--app-muted);
+    text-align: center;
+    padding: 1rem;
+  }
+
   @media (min-width: 640px) {
     .app-shell {
       padding: 1.5rem 1.5rem 4rem;
     }
+  }
+}
+
+@keyframes story-dot-pulse {
+  0%,
+  80%,
+  100% {
+    transform: scale(0.75);
+    opacity: 0.45;
+  }
+
+  40% {
+    transform: scale(1);
+    opacity: 1;
   }
 }

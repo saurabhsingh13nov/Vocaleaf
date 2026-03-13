@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { User } from '@/services/auth'
@@ -13,6 +14,12 @@ const useAuthMock = vi.mocked(useAuth)
 
 vi.mock('@/composables/useAuth', () => ({
   useAuth: vi.fn(),
+}))
+
+vi.mock('@/services/stories', () => ({
+  createStory: vi.fn(),
+  getStory: vi.fn(),
+  getStories: vi.fn().mockResolvedValue([]),
 }))
 
 vi.mock('vue-router', async () => {
@@ -60,6 +67,7 @@ function makeAuthState(overrides?: Partial<ReturnType<typeof useAuth>>): ReturnT
 describe('auth views', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    setActivePinia(createPinia())
   })
 
   it('submits login credentials and navigates to dashboard', async () => {

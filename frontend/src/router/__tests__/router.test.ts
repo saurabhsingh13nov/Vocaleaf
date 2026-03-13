@@ -92,6 +92,24 @@ describe('router auth guards', () => {
     expect(router.currentRoute.value.name).toBe('login')
   })
 
+  it('redirects unauthenticated users away from story creation', async () => {
+    const authStore = useAuthStore(pinia)
+    authStore.clearUser()
+
+    await router.push('/stories/new')
+
+    expect(router.currentRoute.value.name).toBe('login')
+  })
+
+  it('redirects unauthenticated users away from story detail', async () => {
+    const authStore = useAuthStore(pinia)
+    authStore.clearUser()
+
+    await router.push('/stories/story-123')
+
+    expect(router.currentRoute.value.name).toBe('login')
+  })
+
   it('clears user state and redirects to login when initialization throws', async () => {
     const authStore = useAuthStore(pinia)
     authStore.user = sampleUser

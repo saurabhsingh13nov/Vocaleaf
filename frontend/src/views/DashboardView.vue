@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { useAuth } from '@/composables/useAuth'
+import { useStoriesStore } from '@/stores/stories'
 
 const router = useRouter()
 const auth = useAuth()
+const storiesStore = useStoriesStore()
 
 const displayName = computed(() => auth.user.value?.full_name || 'Story Creator')
 const email = computed(() => auth.user.value?.primary_email || 'No email on file')
@@ -22,6 +24,27 @@ const createdAt = computed(() => {
     day: 'numeric',
   })
 })
+
+onMounted(() => {
+  storiesStore.fetchStories().catch(() => undefined)
+})
+
+onBeforeUnmount(() => {
+  storiesStore.stopAllPolling()
+})
+
+function statusTone(status: string) {
+  switch (status) {
+    case 'ready':
+      return 'bg-emerald-100 text-emerald-700'
+    case 'failed':
+      return 'bg-red-100 text-red-700'
+    case 'generating':
+      return 'bg-amber-100 text-amber-700'
+    default:
+      return 'bg-stone-200 text-stone-700'
+  }
+}
 
 async function handleLogout() {
   await auth.logout()
@@ -69,6 +92,14 @@ async function handleLogout() {
       </section>
 
       <section class="dashboard-grid md:grid-cols-2 xl:grid-cols-4">
+        <RouterLink :to="{ name: 'story-create' }" class="dashboard-tile transition hover:-translate-y-0.5">
+          <p class="page-kicker">Create</p>
+          <h2 class="mt-3 text-2xl font-semibold text-[var(--app-ink)]">New story</h2>
+          <p class="mt-3 text-sm leading-6 text-[var(--app-muted)]">
+            Start a personalized story draft and let the background text worker build each page.
+          </p>
+        </RouterLink>
+
         <RouterLink :to="{ name: 'children' }" class="dashboard-tile transition hover:-translate-y-0.5">
           <p class="page-kicker">Profiles</p>
           <h2 class="mt-3 text-2xl font-semibold text-[var(--app-ink)]">Child profiles</h2>
@@ -94,12 +125,61 @@ async function handleLogout() {
         </article>
 
         <article class="dashboard-tile">
-          <p class="page-kicker">Next</p>
-          <h2 class="mt-3 text-2xl font-semibold text-[var(--app-ink)]">Story generation</h2>
+          <p class="page-kicker">Pipeline</p>
+          <h2 class="mt-3 text-2xl font-semibold text-[var(--app-ink)]">Phase 9 live</h2>
           <p class="mt-3 text-sm leading-6 text-[var(--app-muted)]">
-            Story creation and page generation are still ahead, but the account and voice foundations are now in place.
+            Text generation is now the active workflow. Illustrations and narration still follow in later phases.
           </p>
         </article>
+      </section>
+
+      <section class="surface-card px-6 py-6 sm:px-8">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p class="page-kicker">Library</p>
+            <h2 class="mt-2 text-3xl font-semibold text-[var(--app-ink)]">Recent stories</h2>
+          </div>
+          <RouterLink :to="{ name: 'story-create' }" class="nav-link">Create another</RouterLink>
+        </div>
+
+        <div v-if="storiesStore.isLoading && storiesStore.stories.length === 0" class="mt-6 text-sm text-[var(--app-muted)]">
+          Loading stories…
+        </div>
+
+        <div
+          v-else-if="storiesStore.stories.length === 0"
+          class="empty-panel mt-6 px-6 py-10 text-center"
+        >
+          <p class="text-base font-medium text-[var(--app-ink)]">No stories yet.</p>
+          <p class="mx-auto mt-3 max-w-md text-sm leading-6 text-[var(--app-muted)]">
+            Create the first story to see text generation progress and completed pages here.
+          </p>
+        </div>
+
+        <div v-else class="mt-6 grid gap-4 md:grid-cols-2">
+          <RouterLink
+            v-for="story in storiesStore.stories"
+            :key="story.id"
+            :to="{ name: 'story-detail', params: { storyId: story.id } }"
+            class="surface-card-muted block px-5 py-5 transition hover:-translate-y-0.5"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="page-kicker">Story</p>
+                <h3 class="mt-2 text-2xl font-semibold text-[var(--app-ink)]">
+                  {{ story.title || story.theme || 'Untitled Story' }}
+                </h3>
+                <p class="mt-3 text-sm leading-6 text-[var(--app-muted)]">
+                  {{ story.target_page_count ?? 0 }} pages · {{ new Date(story.created_at).toLocaleDateString() }}
+                </p>
+              </div>
+
+              <span class="status-pill" :class="statusTone(story.status)">
+                {{ story.status }}
+              </span>
+            </div>
+          </RouterLink>
+        </div>
       </section>
     </div>
   </main>

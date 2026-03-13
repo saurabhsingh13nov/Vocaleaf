@@ -15,6 +15,7 @@ Vocaleaf is a personalized children's storybook web app. This plan started befor
 - Phase 6 complete: storage and asset service — R2 integration boundary, signed upload/read URLs, upload confirmation, explicit asset upload lifecycle, backend asset tests, and manual local verification against a real R2 bucket.
 - Phase 7 complete: voice profiles and sample upload — consent-gated profile creation, voice profile listing, direct signed voice-sample uploads, sample confirmation, sample/profile deletion with raw-storage cleanup, browser recording/file-upload UI, clearer phase-7 status labels, and frontend/backend test coverage.
 - Phase 8 complete: Celery + voice cloning worker — Redis-backed Celery app, manual clone initiation, official ElevenLabs Python SDK integration boundary, prefork-safe async worker sessions, profile detail polling, worker-driven status transitions, and a mobile-first UI refresh across the current product surfaces.
+- Phase 9 complete: story creation + text generation — Anthropic integration boundary, story create/list/detail APIs, Celery text worker, dashboard recent-story surface, story creation form, and story detail polling with page-level text output.
 - `npm run build` and all tests pass.
 
 ## Tech Stack (Locked In)

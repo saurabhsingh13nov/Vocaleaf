@@ -138,6 +138,10 @@ Recommended story status usage:
 	•	failed = the workflow failed and needs retry or intervention
 	•	deleted = no longer active
 
+Current implementation note for phase 9:
+	•	text generation is the only required output today, so stories transition to ready when text generation completes successfully
+	•	story_pages remain at text_ready until later image/audio phases are implemented
+
 Recommended page status usage:
 	•	pending = page exists but generation has not produced usable output yet
 	•	text_ready = final text is stored

@@ -12,7 +12,7 @@ The current product direction is a FastAPI backend plus background workers, Post
 
 ## Current Status
 
-This repository is in active development — phases 0 through 8 are complete, phase 9 (story creation + text generation) is in progress.
+This repository is in active development — phases 0 through 9 are complete.
 
 - **Phase 0:** Project scaffolding — FastAPI + Vue 3 + Docker Compose
 - **Phase 1:** Database models — 17 ORM models, 12 enums, Alembic migrations
@@ -23,6 +23,7 @@ This repository is in active development — phases 0 through 8 are complete, ph
 - **Phase 6:** Storage & asset service — signed upload/read URLs, upload confirmation, R2 integration boundary, and private asset metadata lifecycle
 - **Phase 7:** Voice profiles and sample upload — profile creation with consent capture, browser recording/file upload, signed R2 sample uploads, sample/profile deletion, and private sample metadata lifecycle
 - **Phase 8:** Celery + voice cloning worker — Redis-backed job execution, manual clone initiation, official ElevenLabs Python SDK integration boundary, prefork-safe async worker sessions, profile-status polling, and a refreshed mobile-first UI across the current app surfaces
+- **Phase 9:** Story creation + text generation — story create/list/detail APIs, Anthropic integration boundary, Celery text worker, generation polling, and story detail UI with page-level text output
 
 Architecture and schema docs are ahead of feature implementation by design.
 
@@ -128,8 +129,10 @@ Backend:
 - asset upload URL, confirm, and signed read endpoints with ownership enforcement
 - voice profile creation/listing/detail plus voice sample upload/confirm/delete, manual clone initiation, and profile delete endpoints
 - Celery-backed voice clone worker that downloads uploaded samples from R2, calls the official ElevenLabs Python SDK, stores provider voice IDs on success, and uses process-local async DB sessions under the normal Celery prefork pool
+- story creation/list/detail endpoints with owned child/voice validation and latest generation error surfacing
+- Celery-backed text generation worker that calls Anthropic, validates structured page output, stores `story_pages` and `story_page_generations`, and marks text-complete stories as ready for phase 9
 - 17 ORM models and Alembic migrations for the full domain schema
-- 84 backend tests
+- 94 backend tests
 
 Frontend:
 
@@ -137,16 +140,12 @@ Frontend:
 - Google Sign-In button on login and register pages; link-mode form when a 409 conflict occurs
 - child profiles management page with create/edit/delete
 - voice profiles page with consent-gated profile creation, in-browser recording, file upload, sample deletion, profile deletion, manual clone trigger, and automatic status polling
+- story creation form, story detail view, generation polling, and dashboard recent-stories surface
 - clearer phase-7 profile status labels in the UI (`Add samples`, `Awaiting clone`) instead of the raw backend `pending` state
 - mobile-first warm editorial refresh across the current auth, dashboard, children, and voice surfaces
-- Pinia stores for auth, children, and voice state
-- 50 frontend unit tests for stores, router guards, auth views (including link-mode), children views, and voice flows
+- Pinia stores for auth, children, voice, and story state
+- 58 frontend unit tests for stores, router guards, auth views (including link-mode), children views, voice flows, and story flows
 - build tooling and lint/type-check setup
-
-In progress (Phase 9):
-
-- story creation API and Claude text generation worker
-- story creation form and detail view with generation polling
 
 Not yet built:
 
