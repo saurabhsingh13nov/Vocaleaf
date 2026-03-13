@@ -40,6 +40,9 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# backend
+backend/cookies.txt
+
 # IDE and OS files
 .DS_Store
 Thumbs.db
