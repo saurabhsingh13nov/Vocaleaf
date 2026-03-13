@@ -197,6 +197,7 @@ class TestGoogleAuthProviderUserId:
         result = await db_session.execute(
             select(AuthIdentity).where(
                 AuthIdentity.provider == AuthProvider.GOOGLE,
+                AuthIdentity.provider_user_id == "google-uid-12345",
             )
         )
         identity = result.scalar_one()
