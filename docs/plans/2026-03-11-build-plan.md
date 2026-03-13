@@ -2,7 +2,7 @@
 
 ## Context
 
-Vocaleaf is a personalized children's storybook web app. This plan started before implementation and still serves as the roadmap for the remaining work. The repository now contains the completed foundation for phases 0 through 3, and the later phases below remain the forward-looking build sequence.
+Vocaleaf is a personalized children's storybook web app. This plan started before implementation and still serves as the roadmap for the remaining work. The repository now contains the completed foundation for phases 0 through 6, and the later phases below remain the forward-looking build sequence.
 
 ## Current Repo Status (March 13, 2026)
 
@@ -11,8 +11,8 @@ Vocaleaf is a personalized children's storybook web app. This plan started befor
 - Phase 2 complete: email/password auth and JWT cookie auth exist in the FastAPI backend.
 - Phase 3 complete: Vue auth flow, protected routing, and frontend unit tests exist.
 - Phase 4 complete: child profiles CRUD — backend (schemas, service, routes, 17 tests) and frontend (service, Pinia store, components, view, 4 tests).
-- Phase 5 complete: Google OAuth — Sign in with Google (ID token flow) + account linking flow; 49 backend tests, 32 frontend tests.
-- Phase 6 complete: storage and asset service — R2 integration boundary, signed upload/read URLs, upload confirmation, explicit asset upload lifecycle, and backend asset tests.
+- Phase 5 complete: Google OAuth — Sign in with Google (ID token flow) + account linking flow; auth and frontend coverage remain in place under the current test suite.
+- Phase 6 complete: storage and asset service — R2 integration boundary, signed upload/read URLs, upload confirmation, explicit asset upload lifecycle, backend asset tests, and manual local verification against a real R2 bucket.
 - `npm run build` and all tests pass.
 
 ## Tech Stack (Locked In)
@@ -243,7 +243,7 @@ vocaleaf/
 - 409 conflict triggers link-mode form (password prompt + Link/Cancel) instead of a dead-end error message; satisfies the auth.md rule against silent auto-merge
 - 8 frontend tests covering link-mode for both views: 409 → link form, correct password → dashboard, wrong password → error, Cancel → normal form
 
-**Verification:** All 49 backend tests pass, all 32 frontend tests pass, frontend builds cleanly.
+**Verification:** Phase 5 shipped with passing backend/frontend tests and a clean frontend build; the current suite has grown further in later phases.
 
 ---
 
