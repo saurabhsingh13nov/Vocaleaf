@@ -22,7 +22,7 @@ This repository is in active development — phases 0 through 8 are complete.
 - **Phase 5:** Google OAuth — Sign in with Google (ID token flow) + account linking flow when email conflicts with an existing password account
 - **Phase 6:** Storage & asset service — signed upload/read URLs, upload confirmation, R2 integration boundary, and private asset metadata lifecycle
 - **Phase 7:** Voice profiles and sample upload — profile creation with consent capture, browser recording/file upload, signed R2 sample uploads, sample/profile deletion, and private sample metadata lifecycle
-- **Phase 8:** Celery + voice cloning worker — Redis-backed job execution, manual clone initiation, official ElevenLabs Python SDK integration boundary, profile-status polling, and a refreshed mobile-first UI across the current app surfaces
+- **Phase 8:** Celery + voice cloning worker — Redis-backed job execution, manual clone initiation, official ElevenLabs Python SDK integration boundary, prefork-safe async worker sessions, profile-status polling, and a refreshed mobile-first UI across the current app surfaces
 
 Architecture and schema docs are ahead of feature implementation by design.
 
@@ -126,9 +126,9 @@ Backend:
 - child profiles CRUD with per-user ownership enforcement
 - asset upload URL, confirm, and signed read endpoints with ownership enforcement
 - voice profile creation/listing/detail plus voice sample upload/confirm/delete, manual clone initiation, and profile delete endpoints
-- Celery-backed voice clone worker that downloads uploaded samples from R2, calls the official ElevenLabs Python SDK, and stores provider voice IDs on success
+- Celery-backed voice clone worker that downloads uploaded samples from R2, calls the official ElevenLabs Python SDK, stores provider voice IDs on success, and uses process-local async DB sessions under the normal Celery prefork pool
 - 17 ORM models and Alembic migrations for the full domain schema
-- 80 backend tests
+- 84 backend tests
 
 Frontend:
 
@@ -147,6 +147,7 @@ Not yet built:
 - story creation and story page APIs
 - async generation workers and provider integrations
 - story text/image/audio generation workflows
+- provider-side voice deletion and preview sample generation
 
 ## Notes
 

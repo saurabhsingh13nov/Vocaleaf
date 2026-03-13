@@ -3,6 +3,7 @@
 import uuid
 from types import SimpleNamespace
 
+import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
@@ -14,7 +15,12 @@ from app.models.asset import Asset
 from app.models.enums import AssetType, AssetUploadStatus, VoiceProfileStatus, VoiceSampleStatus
 from app.models.voice_profile import VoiceProfile
 from app.models.voice_sample import VoiceSample
-from app.workers.voice_clone_worker import run_voice_clone, run_voice_clone_in_session
+from app.workers.voice_clone_worker import (
+    clone_voice_profile_task,
+    mark_voice_clone_failed_in_session,
+    run_voice_clone,
+    run_voice_clone_in_session,
+)
 
 REGISTER_URL = "/api/auth/register"
 VOICE_PROFILE_URL = "/api/voice-profiles"
@@ -552,6 +558,56 @@ async def test_run_voice_clone_marks_failed_and_restores_samples_on_provider_err
     refreshed_sample = await get_voice_sample(db_session, upload_resp.json()["sample_id"])
     assert refreshed_profile.status == VoiceProfileStatus.FAILED
     assert refreshed_sample.status == VoiceSampleStatus.UPLOADED
+
+
+async def test_mark_voice_clone_failed_in_session_restores_processing_samples(
+    client: AsyncClient, db_session, monkeypatch
+):
+    fake_r2 = FakeR2Client()
+    monkeypatch.setattr("app.services.voice.get_r2_client", lambda: fake_r2)
+
+    await register_and_get_client(client)
+    profile = await create_profile(client)
+    upload_resp = await client.post(
+        f"{VOICE_PROFILE_URL}/{profile['id']}/samples",
+        json={
+            "mime_type": "audio/webm",
+            "file_size_bytes": 1024,
+            "duration_seconds": 5.1,
+        },
+    )
+    sample = await get_voice_sample(db_session, upload_resp.json()["sample_id"])
+
+    profile_model = await get_voice_profile(db_session, profile["id"])
+    profile_model.status = VoiceProfileStatus.PROCESSING
+    sample.status = VoiceSampleStatus.PROCESSING
+    await db_session.commit()
+
+    await mark_voice_clone_failed_in_session(db_session, uuid.UUID(profile["id"]))
+
+    refreshed_profile = await get_voice_profile(db_session, profile["id"])
+    refreshed_sample = await get_voice_sample(db_session, upload_resp.json()["sample_id"])
+    assert refreshed_profile.status == VoiceProfileStatus.FAILED
+    assert refreshed_sample.status == VoiceSampleStatus.UPLOADED
+
+
+def test_clone_voice_profile_task_marks_failed_on_unexpected_error(monkeypatch):
+    cleanup_calls: list[uuid.UUID] = []
+
+    async def raise_unexpected(profile_id: uuid.UUID) -> None:
+        raise RuntimeError("unexpected failure")
+
+    async def record_cleanup(profile_id: uuid.UUID) -> None:
+        cleanup_calls.append(profile_id)
+
+    monkeypatch.setattr("app.workers.voice_clone_worker.run_voice_clone", raise_unexpected)
+    monkeypatch.setattr("app.workers.voice_clone_worker.mark_voice_clone_failed", record_cleanup)
+
+    profile_id = str(uuid.uuid4())
+    with pytest.raises(RuntimeError, match="unexpected failure"):
+        clone_voice_profile_task(profile_id)
+
+    assert cleanup_calls == [uuid.UUID(profile_id)]
 
 
 async def test_delete_uploaded_voice_sample_succeeds_when_object_missing(client: AsyncClient, db_session, monkeypatch):

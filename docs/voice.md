@@ -110,11 +110,15 @@ Phases 7 and 8 currently ship:
 	•	clearer phase-7 UI labels for profile state: `Add samples` before uploads and `Awaiting clone` after successful sample collection
 	•	manual clone initiation from the voice profiles UI once at least one sample has been confirmed
 	•	Celery-backed clone execution using Redis and the official ElevenLabs Python SDK behind the integration boundary
+	•	prefork-safe async worker session handling so clone jobs run correctly under the normal Celery worker pool
 	•	profile-detail polling in the frontend until clone status reaches `ready` or `failed`
+	•	stored `provider_voice_id` values that work for provider-side TTS even when the provider dashboard does not show a preview sample
 
 Not shipped yet:
 	•	separate `consents` table writes for voice cloning
 	•	webhook-based provider completion handling
+	•	provider-side deletion when a local voice_profile is deleted
+	•	provider preview sample generation for dashboard playback
 	•	raw sample playback/download in the normal user UI
 
 Upload flow

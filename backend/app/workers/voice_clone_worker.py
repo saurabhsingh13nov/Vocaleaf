@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
-from app.db.session import async_session_factory
+from app.db.session import get_async_session_factory
 from app.integrations.elevenlabs import ElevenLabsError, ElevenLabsSample, get_elevenlabs_client
 from app.integrations.r2 import R2Error, R2ObjectNotFoundError, get_r2_client
 from app.models.enums import AssetUploadStatus, VoiceProfileStatus, VoiceSampleStatus
@@ -22,10 +22,46 @@ logger = logging.getLogger(__name__)
 async def run_voice_clone(
     profile_id: uuid.UUID,
     *,
-    session_factory: async_sessionmaker = async_session_factory,
+    session_factory: async_sessionmaker[AsyncSession] | None = None,
 ) -> None:
+    session_factory = session_factory or get_async_session_factory()
     async with session_factory() as db:
         await run_voice_clone_in_session(db, profile_id)
+
+
+async def _load_profile_for_status_update(db: AsyncSession, profile_id: uuid.UUID) -> VoiceProfile | None:
+    result = await db.execute(
+        select(VoiceProfile)
+        .where(VoiceProfile.id == profile_id)
+        .options(selectinload(VoiceProfile.voice_samples))
+        .execution_options(populate_existing=True)
+    )
+    return result.scalar_one_or_none()
+
+
+async def mark_voice_clone_failed_in_session(db: AsyncSession, profile_id: uuid.UUID) -> None:
+    await db.rollback()
+    profile = await _load_profile_for_status_update(db, profile_id)
+    if profile is None:
+        logger.warning("Voice clone cleanup skipped because profile %s no longer exists", profile_id)
+        return
+
+    for sample in profile.voice_samples:
+        if sample.status == VoiceSampleStatus.PROCESSING:
+            sample.status = VoiceSampleStatus.UPLOADED
+    profile.status = VoiceProfileStatus.FAILED
+    await db.commit()
+
+
+async def mark_voice_clone_failed(
+    profile_id: uuid.UUID,
+    *,
+    session_factory: async_sessionmaker[AsyncSession] | None = None,
+) -> None:
+    """Restore a stuck clone request to a failed state after an unexpected worker crash."""
+    session_factory = session_factory or get_async_session_factory()
+    async with session_factory() as db:
+        await mark_voice_clone_failed_in_session(db, profile_id)
 
 
 async def run_voice_clone_in_session(db: AsyncSession, profile_id: uuid.UUID) -> None:
@@ -78,23 +114,7 @@ async def run_voice_clone_in_session(db: AsyncSession, profile_id: uuid.UUID) ->
             samples=payload_samples,
         )
     except (ElevenLabsError, R2Error, R2ObjectNotFoundError) as exc:
-        await db.rollback()
-        result = await db.execute(
-            select(VoiceProfile)
-            .where(VoiceProfile.id == profile_id)
-            .options(selectinload(VoiceProfile.voice_samples))
-            .execution_options(populate_existing=True)
-        )
-        profile = result.scalar_one_or_none()
-        if profile is None:
-            logger.warning("Voice clone cleanup skipped because profile %s no longer exists", profile_id)
-            return
-
-        for sample in profile.voice_samples:
-            if sample.status == VoiceSampleStatus.PROCESSING:
-                sample.status = VoiceSampleStatus.UPLOADED
-        profile.status = VoiceProfileStatus.FAILED
-        await db.commit()
+        await mark_voice_clone_failed_in_session(db, profile_id)
         logger.exception("Voice clone failed for profile %s", profile_id, exc_info=exc)
         return
 
@@ -120,4 +140,14 @@ async def run_voice_clone_in_session(db: AsyncSession, profile_id: uuid.UUID) ->
 @celery_app.task(name="app.workers.voice_clone_worker.clone_voice_profile_task")
 def clone_voice_profile_task(profile_id: str) -> None:
     """Celery wrapper that bridges synchronous workers to async DB code."""
-    asyncio.run(run_voice_clone(uuid.UUID(profile_id)))
+    profile_uuid = uuid.UUID(profile_id)
+
+    try:
+        asyncio.run(run_voice_clone(profile_uuid))
+    except Exception:
+        logger.exception("Voice clone task crashed for profile %s", profile_id)
+        try:
+            asyncio.run(mark_voice_clone_failed(profile_uuid))
+        except Exception:
+            logger.exception("Voice clone crash cleanup failed for profile %s", profile_id)
+        raise
