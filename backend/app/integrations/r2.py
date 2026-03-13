@@ -142,6 +142,19 @@ class R2StorageClient:
             checksum=checksum,
         )
 
+    def put_object(self, *, object_key: str, body: bytes, content_type: str) -> R2ObjectMetadata:
+        try:
+            self._get_client().put_object(
+                Bucket=self.bucket_name,
+                Key=object_key,
+                Body=body,
+                ContentType=content_type,
+            )
+        except Exception as exc:
+            raise R2Error("Failed to upload object to R2") from exc
+
+        return self.head_object(object_key=object_key)
+
     def download_object(self, *, object_key: str) -> R2ObjectData:
         try:
             response = self._get_client().get_object(

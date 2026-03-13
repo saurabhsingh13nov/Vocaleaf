@@ -80,3 +80,13 @@ export async function getStory(storyId: string): Promise<Story> {
 export async function deleteStory(storyId: string): Promise<void> {
   await api.delete(`/stories/${storyId}`)
 }
+
+export interface AssetReadUrlResponse {
+  url: string
+  expires_at: string
+}
+
+export async function getAssetUrl(assetId: string): Promise<AssetReadUrlResponse> {
+  const { data } = await api.get<AssetReadUrlResponse>(`/assets/${assetId}/url`)
+  return data
+}

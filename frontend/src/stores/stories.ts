@@ -5,6 +5,7 @@ import { defineStore } from 'pinia'
 import {
   createStory as createStoryRequest,
   deleteStory as deleteStoryRequest,
+  getAssetUrl,
   getStory as getStoryRequest,
   getStories as getStoriesRequest,
   type CreateStoryPayload,
@@ -52,6 +53,7 @@ export const useStoriesStore = defineStore('stories', () => {
   const error = ref<string | null>(null)
   const generatingStoryIds = ref<string[]>([])
   const pollingTimers = new Map<string, number>()
+  const imageUrls = ref<Record<string, string>>({})
 
   function mergeStoryListItem(story: StoryListItem) {
     const index = stories.value.findIndex((entry) => entry.id === story.id)
@@ -67,6 +69,21 @@ export const useStoriesStore = defineStore('stories', () => {
   function mergeStoryDetail(story: Story) {
     currentStory.value = story
     mergeStoryListItem(toListItem(story))
+    fetchMissingImageUrls(story)
+  }
+
+  function fetchMissingImageUrls(story: Story) {
+    for (const page of story.pages) {
+      if (page.image_asset_id && !imageUrls.value[page.image_asset_id]) {
+        getAssetUrl(page.image_asset_id)
+          .then((resp) => {
+            imageUrls.value = { ...imageUrls.value, [page.image_asset_id!]: resp.url }
+          })
+          .catch(() => {
+            // Signed URL fetch failed — will retry on next poll
+          })
+      }
+    }
   }
 
   function clearGeneratingState(storyId: string) {
@@ -209,6 +226,7 @@ export const useStoriesStore = defineStore('stories', () => {
     fetchStory,
     generatingStoryIds,
     getErrorMessage,
+    imageUrls,
     isGeneratingStory,
     isLoading,
     stories,

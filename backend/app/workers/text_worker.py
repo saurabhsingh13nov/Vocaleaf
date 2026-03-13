@@ -212,11 +212,15 @@ async def run_text_generation_in_session(
     )
 
     story.title = output.title
-    story.status = StoryStatus.READY
-    job.status = JobStatus.COMPLETED
+    story.status = StoryStatus.GENERATING
+    job.provider_image = "google_imagen"
     job.error_message = None
-    job.completed_at = _utcnow_naive()
     await db.commit()
+
+    from app.workers.image_worker import generate_page_image_task
+
+    for page_model in pages:
+        generate_page_image_task.delay(str(page_model.id), str(job.id))
 
 
 @celery_app.task(name="app.workers.text_worker.generate_story_text_task")

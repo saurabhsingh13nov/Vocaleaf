@@ -352,7 +352,7 @@ async def test_delete_failed_story_returns_404_for_other_user(client: AsyncClien
     assert response.status_code == 404
 
 
-async def test_delete_story_rejects_non_failed_status(client: AsyncClient, db_session):
+async def test_delete_ready_story_success(client: AsyncClient, db_session):
     await register_and_get_client(client)
     user = await get_user_by_email(db_session, "story-user@example.com")
     child = Child(user_id=user.id, name="Luna", age=5)
@@ -370,12 +370,45 @@ async def test_delete_story_rejects_non_failed_status(client: AsyncClient, db_se
 
     response = await client.delete(f"{STORIES_URL}/{story.id}")
 
-    assert response.status_code == 409
-    assert "only failed stories" in response.json()["detail"].lower()
+    assert response.status_code == 204
+
+    detail_response = await client.get(f"{STORIES_URL}/{story.id}")
+    assert detail_response.status_code == 404
+
+
+async def test_delete_generating_story_success(client: AsyncClient, db_session):
+    await register_and_get_client(client)
+    user = await get_user_by_email(db_session, "story-user@example.com")
+    child = Child(user_id=user.id, name="Luna", age=5)
+    story = Story(
+        user_id=user.id,
+        child=child,
+        title="In Progress Story",
+        prompt="A quiet night",
+        status=StoryStatus.GENERATING,
+        target_page_count=1,
+        language="en",
+    )
+    db_session.add_all([user, child, story])
+    await db_session.commit()
+
+    response = await client.delete(f"{STORIES_URL}/{story.id}")
+
+    assert response.status_code == 204
+
+    detail_response = await client.get(f"{STORIES_URL}/{story.id}")
+    assert detail_response.status_code == 404
 
 
 async def test_run_text_generation_success(db_session, monkeypatch):
     from app.integrations.anthropic import StoryPageOutput, StoryTextOutput
+
+    # Mock image task dispatch so it doesn't actually run
+    image_task_calls = []
+    monkeypatch.setattr(
+        "app.workers.image_worker.generate_page_image_task.delay",
+        lambda page_id, job_id: image_task_calls.append((page_id, job_id)),
+    )
 
     user = User(
         id=uuid.uuid4(),
@@ -458,14 +491,17 @@ async def test_run_text_generation_success(db_session, monkeypatch):
     ).scalars().all()
 
     assert fake_client.calls
-    assert refreshed_story.status == StoryStatus.READY
+    # Story stays GENERATING while images are being generated
+    assert refreshed_story.status == StoryStatus.GENERATING
     assert refreshed_story.title == "Moon Garden"
-    assert refreshed_job.status == JobStatus.COMPLETED
+    assert refreshed_job.provider_image == "google_imagen"
     assert len(pages) == 2
     assert pages[0].status == StoryPageStatus.TEXT_READY
     assert len(page_generations) == 2
     assert page_generations[0].generation_type == GenerationType.TEXT
     assert page_generations[0].status == JobStatus.COMPLETED
+    # Image tasks were enqueued for each page
+    assert len(image_task_calls) == 2
 
 
 async def test_run_text_generation_marks_story_failed(db_session, monkeypatch):

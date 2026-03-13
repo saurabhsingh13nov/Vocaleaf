@@ -141,7 +141,7 @@ Recommended story status usage:
 Current implementation note for phase 9:
 	•	text generation is the only required output today, so stories transition to ready when text generation completes successfully
 	•	story_pages remain at text_ready until later image/audio phases are implemented
-	•	failed stories can be user-deleted through a soft-delete flow, while generation-job records remain for debugging
+	•	stories in user-visible states can be soft-deleted through the API, including while generation is running, while generation-job records remain for debugging
 
 Recommended page status usage:
 	•	pending = page exists but generation has not produced usable output yet

@@ -366,6 +366,10 @@ vocaleaf/
 
 **Verification:** After text generation, images should auto-generate. Story detail shows illustrations for each page.
 
+**Bugfix (2026-03-13):** SDK TypeError (`GenerateImageConfig` → `GenerateImagesConfig`) + enum fields needed actual enum instances. Also fixed infinite frontend polling when image generation fails by propagating FAILED status to story and job.
+
+**Follow-up — Delete story feature:** Allows deleting stories in any status (READY, GENERATING, FAILED) via three-dot menu + confirmation modal. See [`docs/plans/2026-03-13-delete-story-feature.md`](./2026-03-13-delete-story-feature.md) for full plan. Partially implemented — backend done, frontend modal WIP.
+
 ---
 
 ### Phase 11: Audio Narration

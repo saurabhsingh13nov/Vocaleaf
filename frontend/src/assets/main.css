@@ -236,6 +236,27 @@
     color: var(--app-ink);
   }
 
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: rgba(36, 29, 23, 0.5);
+    backdrop-filter: blur(8px);
+  }
+
+  .modal-panel {
+    width: min(26rem, 100%);
+    border: 1px solid var(--app-border);
+    background: var(--app-surface-strong);
+    border-radius: 1.75rem;
+    padding: 1.75rem;
+    box-shadow: 0 24px 80px -20px rgba(0, 0, 0, 0.3);
+  }
+
   .dashboard-grid {
     display: grid;
     gap: 1rem;
@@ -321,11 +342,274 @@
     padding: 1rem;
   }
 
+  /* Story spread layout */
+  .story-spread {
+    display: grid;
+    gap: 1.5rem;
+    border: 1px solid var(--app-border);
+    background: rgba(244, 237, 227, 0.82);
+    border-radius: 1.5rem;
+    padding: 1.25rem;
+    box-shadow: var(--app-shadow-soft);
+  }
+
+  @media (min-width: 1024px) {
+    .story-spread {
+      grid-template-columns: 1fr 1fr;
+      padding: 1.5rem;
+    }
+
+    .story-spread--flipped .story-image-card-wrapper {
+      order: 2;
+    }
+
+    .story-spread--flipped .story-spread__text {
+      order: 1;
+    }
+  }
+
+  .story-spread__text {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 0.5rem 0;
+  }
+
+  /* Image card */
+  .story-image-card {
+    aspect-ratio: 4 / 3;
+    border-radius: 1.25rem;
+    overflow: hidden;
+    display: grid;
+    place-items: center;
+  }
+
+  .story-image-card--loading {
+    background:
+      linear-gradient(
+        110deg,
+        rgba(244, 237, 227, 0.6) 25%,
+        rgba(255, 253, 249, 0.9) 37%,
+        rgba(244, 237, 227, 0.6) 63%
+      );
+    background-size: 200% 100%;
+    animation: shimmer 1.8s ease-in-out infinite;
+    border: 1px dashed var(--app-border-strong);
+  }
+
+  .story-image-card__shimmer-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--app-muted-soft);
+  }
+
+  .animate-dots::after {
+    content: '';
+    animation: loading-dots 1.4s steps(4, end) infinite;
+  }
+
+  .story-image-card--ready {
+    cursor: pointer;
+    position: relative;
+    transition: transform 260ms ease, box-shadow 260ms ease;
+    box-shadow: 0 4px 20px -6px rgba(70, 43, 23, 0.18);
+  }
+
+  .story-image-card--ready:hover {
+    transform: scale(1.02);
+    box-shadow: 0 8px 30px -8px rgba(70, 43, 23, 0.28);
+  }
+
+  .story-image-card__img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    animation: fadeReveal 500ms ease-out both;
+  }
+
+  .story-image-card--failed {
+    background: rgba(244, 237, 227, 0.5);
+    border: 1px dashed var(--app-danger);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+
+  /* Progress ring */
+  .progress-ring-container {
+    position: relative;
+    width: 48px;
+    height: 48px;
+  }
+
+  .progress-ring {
+    width: 48px;
+    height: 48px;
+    transform: rotate(-90deg);
+  }
+
+  .progress-ring__fill {
+    transition: stroke-dashoffset 400ms ease;
+  }
+
+  .progress-ring__text {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.6rem;
+    font-weight: 700;
+    color: var(--app-accent);
+  }
+
+  /* Lightbox */
+  .lightbox-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(36, 29, 23, 0.75);
+    backdrop-filter: blur(20px);
+  }
+
+  .lightbox-image {
+    max-width: 90vw;
+    max-height: 85vh;
+    border-radius: 1rem;
+    box-shadow: 0 24px 80px -20px rgba(0, 0, 0, 0.5);
+    object-fit: contain;
+  }
+
+  .lightbox-close {
+    position: absolute;
+    top: 1rem;
+    right: 1.25rem;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    background: rgba(255, 253, 249, 0.15);
+    color: #fffdf9;
+    font-size: 1.5rem;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    cursor: pointer;
+    transition: background 160ms ease;
+  }
+
+  .lightbox-close:hover {
+    background: rgba(255, 253, 249, 0.3);
+  }
+
+  .lightbox-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3rem;
+    height: 3rem;
+    border-radius: 50%;
+    background: rgba(255, 253, 249, 0.15);
+    color: #fffdf9;
+    font-size: 2rem;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    cursor: pointer;
+    transition: background 160ms ease;
+  }
+
+  .lightbox-nav:hover {
+    background: rgba(255, 253, 249, 0.3);
+  }
+
+  .lightbox-nav--prev {
+    left: 1rem;
+  }
+
+  .lightbox-nav--next {
+    right: 1rem;
+  }
+
+  .lightbox-indicator {
+    position: absolute;
+    bottom: 1.25rem;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: rgba(255, 253, 249, 0.7);
+  }
+
   @media (min-width: 640px) {
     .app-shell {
       padding: 1.5rem 1.5rem 4rem;
     }
   }
+}
+
+/* Page slide transitions */
+.page-slide-enter-active {
+  transition: all 400ms ease;
+}
+
+.page-slide-leave-active {
+  transition: all 300ms ease;
+}
+
+.page-slide-enter-from {
+  opacity: 0;
+  transform: translateX(30px);
+}
+
+.page-slide-leave-to {
+  opacity: 0;
+  transform: translateX(-30px);
+}
+
+/* Lightbox transitions */
+.lightbox-enter-active {
+  transition: opacity 250ms ease;
+}
+
+.lightbox-leave-active {
+  transition: opacity 200ms ease;
+}
+
+.lightbox-enter-from,
+.lightbox-leave-to {
+  opacity: 0;
+}
+
+/* Modal transitions */
+.modal-enter-active {
+  transition:
+    opacity 200ms ease,
+    transform 200ms ease;
+}
+
+.modal-leave-active {
+  transition:
+    opacity 150ms ease,
+    transform 150ms ease;
+}
+
+.modal-enter-from,
+.modal-leave-to {
+  opacity: 0;
+}
+
+.modal-enter-from .modal-panel,
+.modal-leave-to .modal-panel {
+  transform: translateY(8px) scale(0.98);
 }
 
 @keyframes story-dot-pulse {
@@ -339,5 +623,45 @@
   40% {
     transform: scale(1);
     opacity: 1;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes fadeReveal {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes loading-dots {
+  0% {
+    content: '';
+  }
+
+  25% {
+    content: '.';
+  }
+
+  50% {
+    content: '..';
+  }
+
+  75% {
+    content: '...';
   }
 }

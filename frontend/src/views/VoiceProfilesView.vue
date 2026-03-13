@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
+import ConfirmModal from '@/components/ConfirmModal.vue'
 import VoiceRecorder from '@/components/VoiceRecorder.vue'
 import VoiceSampleList from '@/components/VoiceSampleList.vue'
 import type { VoiceProfile } from '@/services/voice'
@@ -12,6 +13,12 @@ const displayName = ref('')
 const consentConfirmed = ref(false)
 const defaultForUser = ref(false)
 const localError = ref<string | null>(null)
+const pendingDelete = ref<
+  | { kind: 'profile'; profileId: string; profileName: string }
+  | { kind: 'sample'; profileId: string; sampleId: string; profileName: string; sampleLabel: string }
+  | null
+>(null)
+const isDeleting = ref(false)
 
 onMounted(() => {
   store.fetchProfiles()
@@ -47,22 +54,86 @@ async function handleUploadSample(
   await store.uploadSample(profileId, payload)
 }
 
-async function handleDeleteProfile(profileId: string) {
-  const confirmed = window.confirm('Delete this voice profile and all of its samples?')
-  if (!confirmed) {
-    return
+function openDeleteProfileModal(profile: VoiceProfile) {
+  pendingDelete.value = {
+    kind: 'profile',
+    profileId: profile.id,
+    profileName: profile.display_name,
   }
-
-  await store.deleteProfile(profileId)
 }
 
-async function handleDeleteSample(profileId: string, sampleId: string) {
-  const confirmed = window.confirm('Delete this voice sample?')
-  if (!confirmed) {
-    return
+function sampleLabel(profile: VoiceProfile, sampleId: string) {
+  const sample = profile.samples.find((entry) => entry.id === sampleId)
+  if (!sample) {
+    return 'this sample'
   }
+  if (!sample.duration_seconds) {
+    return 'this voice sample'
+  }
+  return `${sample.duration_seconds.toFixed(1)} sec sample`
+}
 
-  await store.deleteSample(profileId, sampleId)
+function openDeleteSampleModal(profile: VoiceProfile, sampleId: string) {
+  pendingDelete.value = {
+    kind: 'sample',
+    profileId: profile.id,
+    sampleId,
+    profileName: profile.display_name,
+    sampleLabel: sampleLabel(profile, sampleId),
+  }
+}
+
+function cancelDelete() {
+  if (!isDeleting.value) {
+    pendingDelete.value = null
+  }
+}
+
+const deleteModalTitle = computed(() => {
+  if (!pendingDelete.value) return ''
+  return pendingDelete.value.kind === 'profile' ? 'Delete voice profile' : 'Delete voice sample'
+})
+
+const deleteModalMessage = computed(() => {
+  if (!pendingDelete.value) return ''
+  if (pendingDelete.value.kind === 'profile') {
+    return `Are you sure you want to delete ${pendingDelete.value.profileName}? This will permanently remove the voice profile and all of its uploaded samples. This can't be undone.`
+  }
+  return `Are you sure you want to delete ${pendingDelete.value.sampleLabel} from ${pendingDelete.value.profileName}? This can't be undone.`
+})
+
+const deleteConfirmLabel = computed(() => (
+  pendingDelete.value?.kind === 'profile' ? 'Delete profile' : 'Delete sample'
+))
+
+const deletePendingLabel = computed(() => (
+  pendingDelete.value?.kind === 'profile' ? 'Deleting profile...' : 'Deleting sample...'
+))
+
+const deleteWarningText = computed(() => {
+  if (pendingDelete.value?.kind === 'profile') {
+    return 'Deleting a voice profile also removes its private raw voice samples.'
+  }
+  return null
+})
+
+async function confirmDelete() {
+  if (!pendingDelete.value) return
+
+  isDeleting.value = true
+
+  try {
+    if (pendingDelete.value.kind === 'profile') {
+      await store.deleteProfile(pendingDelete.value.profileId)
+    } else {
+      await store.deleteSample(pendingDelete.value.profileId, pendingDelete.value.sampleId)
+    }
+    pendingDelete.value = null
+  } catch {
+    // Keep the modal open so the inline page error remains visible.
+  } finally {
+    isDeleting.value = false
+  }
 }
 
 async function handleCloneProfile(profileId: string) {
@@ -271,7 +342,7 @@ function cloneButtonLabel(profile: VoiceProfile) {
               type="button"
               class="secondary-button border-red-200 text-[var(--app-danger)] hover:border-red-300 hover:bg-red-50"
               :disabled="store.isLoading"
-              @click="handleDeleteProfile(profile.id)"
+              @click="openDeleteProfileModal(profile)"
             >
               Delete
             </button>
@@ -285,11 +356,23 @@ function cloneButtonLabel(profile: VoiceProfile) {
             <VoiceSampleList
               :samples="profile.samples"
               :is-loading="store.isLoading"
-              @delete="(sampleId) => handleDeleteSample(profile.id, sampleId)"
+              @delete="(sampleId) => openDeleteSampleModal(profile, sampleId)"
             />
           </div>
         </article>
       </section>
     </div>
   </main>
+
+  <ConfirmModal
+    v-if="pendingDelete"
+    :title="deleteModalTitle"
+    :message="deleteModalMessage"
+    :confirm-label="deleteConfirmLabel"
+    :pending-confirm-label="deletePendingLabel"
+    :warning-text="deleteWarningText"
+    :is-pending="isDeleting"
+    @cancel="cancelDelete"
+    @confirm="confirmDelete"
+  />
 </template>

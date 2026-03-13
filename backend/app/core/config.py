@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     # Google OAuth
     google_client_id: str = ""
 
+    # Google Imagen (via Gemini API)
+    google_genai_api_key: str = ""
+    imagen_model: str = "imagen-3.0-generate-002"
+
     # Cloudflare R2 / S3-compatible object storage
     r2_endpoint_url: str = ""
     r2_bucket_name: str = ""

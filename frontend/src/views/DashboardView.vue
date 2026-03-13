@@ -1,13 +1,49 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
+import ConfirmModal from '@/components/ConfirmModal.vue'
 import { useAuth } from '@/composables/useAuth'
+import type { StoryListItem } from '@/services/stories'
+import { getAssetUrl, getStory } from '@/services/stories'
 import { useStoriesStore } from '@/stores/stories'
 
 const router = useRouter()
 const auth = useAuth()
 const storiesStore = useStoriesStore()
+const deleteTarget = ref<StoryListItem | null>(null)
+const isDeleting = ref(false)
+
+// Thumbnail URLs for story list items: story_id → image URL
+const thumbnailUrls = ref<Record<string, string>>({})
+
+async function fetchThumbnailForStory(storyId: string) {
+  if (thumbnailUrls.value[storyId]) return
+  try {
+    const story = await getStory(storyId)
+    const firstPageWithImage = story.pages
+      .sort((a, b) => a.page_number - b.page_number)
+      .find((p) => p.image_asset_id)
+    if (firstPageWithImage?.image_asset_id) {
+      const resp = await getAssetUrl(firstPageWithImage.image_asset_id)
+      thumbnailUrls.value = { ...thumbnailUrls.value, [storyId]: resp.url }
+    }
+  } catch {
+    // Ignore — thumbnail is optional
+  }
+}
+
+watch(
+  () => storiesStore.stories,
+  (stories) => {
+    for (const story of stories) {
+      if (story.status === 'ready') {
+        fetchThumbnailForStory(story.id)
+      }
+    }
+  },
+  { immediate: true },
+)
 
 const displayName = computed(() => auth.user.value?.full_name || 'Story Creator')
 const email = computed(() => auth.user.value?.primary_email || 'No email on file')
@@ -51,13 +87,29 @@ async function handleLogout() {
   await router.push({ name: 'login' })
 }
 
-async function handleDeleteStory(storyId: string) {
-  const confirmed = window.confirm('Delete this failed story?')
-  if (!confirmed) {
-    return
-  }
+function openDeleteModal(story: StoryListItem) {
+  deleteTarget.value = { ...story }
+}
 
-  await storiesStore.deleteStory(storyId)
+function cancelDelete() {
+  if (!isDeleting.value) {
+    deleteTarget.value = null
+  }
+}
+
+async function confirmDelete() {
+  if (!deleteTarget.value) return
+
+  isDeleting.value = true
+
+  try {
+    await storiesStore.deleteStory(deleteTarget.value.id)
+    deleteTarget.value = null
+  } catch {
+    // Keep the modal open so the inline page error remains visible.
+  } finally {
+    isDeleting.value = false
+  }
 }
 </script>
 
@@ -135,9 +187,9 @@ async function handleDeleteStory(storyId: string) {
 
         <article class="dashboard-tile">
           <p class="page-kicker">Pipeline</p>
-          <h2 class="mt-3 text-2xl font-semibold text-[var(--app-ink)]">Phase 9 live</h2>
+          <h2 class="mt-3 text-2xl font-semibold text-[var(--app-ink)]">Phase 10 live</h2>
           <p class="mt-3 text-sm leading-6 text-[var(--app-muted)]">
-            Text generation is now the active workflow. Illustrations and narration still follow in later phases.
+            Text + illustration generation active. Audio narration follows in phase 11.
           </p>
         </article>
       </section>
@@ -171,7 +223,14 @@ async function handleDeleteStory(storyId: string) {
             :key="story.id"
             class="surface-card-muted px-5 py-5"
           >
-            <div class="flex items-start justify-between gap-3">
+            <div class="flex items-start gap-3">
+              <img
+                v-if="thumbnailUrls[story.id]"
+                :src="thumbnailUrls[story.id]"
+                :alt="story.title || 'Story thumbnail'"
+                class="h-16 w-16 flex-shrink-0 rounded-xl object-cover shadow-sm"
+              />
+
               <RouterLink
                 :to="{ name: 'story-detail', params: { storyId: story.id } }"
                 class="block min-w-0 flex-1 transition hover:-translate-y-0.5"
@@ -185,24 +244,36 @@ async function handleDeleteStory(storyId: string) {
                 </p>
               </RouterLink>
 
-              <span class="status-pill" :class="statusTone(story.status)">
-                {{ story.status }}
-              </span>
-            </div>
-
-            <div v-if="story.status === 'failed'" class="mt-5 flex justify-end">
               <button
                 type="button"
-                class="secondary-button border-red-200 text-[var(--app-danger)] hover:border-red-300 hover:bg-red-50"
+                class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-[var(--app-border)] bg-[var(--app-surface-strong)] text-[var(--app-muted)] transition hover:border-red-200 hover:bg-red-50 hover:text-[var(--app-danger)]"
+                aria-label="Delete story"
                 :disabled="storiesStore.isLoading"
-                @click="handleDeleteStory(story.id)"
+                @click.stop="openDeleteModal(story)"
               >
-                Delete
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M6 7.5h12m-9.75 0v-.75A2.25 2.25 0 0 1 10.5 4.5h3a2.25 2.25 0 0 1 2.25 2.25v.75m-8.25 0h9.75m-8.25 3v6.75a.75.75 0 0 0 .75.75h4.5a.75.75 0 0 0 .75-.75V10.5m-6 0h6" />
+                </svg>
               </button>
+              <span class="status-pill flex-shrink-0" :class="statusTone(story.status)">
+                {{ story.status }}
+              </span>
             </div>
           </article>
         </div>
       </section>
     </div>
   </main>
+
+  <ConfirmModal
+    v-if="deleteTarget"
+    title="Delete story"
+    :message="`Are you sure you want to delete ${deleteTarget.title || deleteTarget.theme || 'this story'}? This will permanently remove the story and all of its pages. This can't be undone.`"
+    confirm-label="Delete story"
+    pending-confirm-label="Deleting..."
+    :warning-text="deleteTarget.status === 'generating' ? 'This story is still being generated. Deleting it will stop generation in progress.' : null"
+    :is-pending="isDeleting"
+    @cancel="cancelDelete"
+    @confirm="confirmDelete"
+  />
 </template>

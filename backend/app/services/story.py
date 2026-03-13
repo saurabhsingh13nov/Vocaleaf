@@ -168,9 +168,6 @@ async def delete_story(
     if story is None:
         raise StoryError("Story not found", status_code=404)
 
-    if story.status != StoryStatus.FAILED:
-        raise StoryError("Only failed stories can be deleted", status_code=409)
-
     story.status = StoryStatus.DELETED
     await db.commit()
 

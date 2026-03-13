@@ -58,6 +58,7 @@ describe('VoiceProfilesView', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    document.body.innerHTML = ''
     setActivePinia(createPinia())
     mockedGetVoiceProfiles.mockResolvedValue([])
     mockedGetVoiceProfile.mockResolvedValue({
@@ -71,7 +72,6 @@ describe('VoiceProfilesView', () => {
       updated_at: '2026-03-13T20:00:00Z',
       samples: [],
     })
-    vi.stubGlobal('confirm', vi.fn(() => true))
   })
 
   it('renders the empty state when no profiles exist', async () => {
@@ -146,7 +146,11 @@ describe('VoiceProfilesView', () => {
     await deleteButton!.trigger('click')
     await flushPromises()
 
-    expect(window.confirm).toHaveBeenCalled()
+    const confirmButton = document.body.querySelector('[data-testid="confirm-modal-confirm"]') as HTMLButtonElement | null
+    expect(confirmButton?.textContent).toBe('Delete profile')
+    confirmButton?.click()
+    await flushPromises()
+
     expect(mockedDeleteVoiceProfile).toHaveBeenCalledWith('profile-1')
     expect(wrapper.text()).not.toContain('Quiet Story Voice')
   })
@@ -183,7 +187,11 @@ describe('VoiceProfilesView', () => {
     await deleteButtons[1]!.trigger('click')
     await flushPromises()
 
-    expect(window.confirm).toHaveBeenCalled()
+    const confirmButton = document.body.querySelector('[data-testid="confirm-modal-confirm"]') as HTMLButtonElement | null
+    expect(confirmButton?.textContent).toBe('Delete sample')
+    confirmButton?.click()
+    await flushPromises()
+
     expect(mockedDeleteVoiceSample).toHaveBeenCalledWith('profile-1', 'sample-1')
     expect(wrapper.text()).not.toContain('3.7 sec')
   })

@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -102,9 +102,9 @@ function makeAuthState() {
 describe('story views', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    document.body.innerHTML = ''
     setActivePinia(createPinia())
     routeRef.value = { params: { storyId: 'story-1' } }
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     useAuthMock.mockReturnValue(makeAuthState())
     mockedGetStories.mockResolvedValue([])
     mockedGetChildren.mockResolvedValue([
@@ -232,7 +232,7 @@ describe('story views', () => {
 
     expect(wrapper.text()).toContain('Lantern Walk')
     expect(wrapper.text()).toContain('The lantern glowed softly beneath the moon.')
-    expect(wrapper.text()).toContain('Illustration will appear here in the next phase.')
+    expect(wrapper.text()).toContain('Illustrating')
   })
 
   it('renders recent stories on the dashboard', async () => {
@@ -297,12 +297,55 @@ describe('story views', () => {
     })
     await flushPromises()
 
-    const deleteButton = wrapper.findAll('button').find((entry) => entry.text() === 'Delete')
-    expect(deleteButton).toBeTruthy()
-    await deleteButton!.trigger('click')
+    await wrapper.get('button[aria-label="Delete story"]').trigger('click')
+    await nextTick()
+
+    const confirmButton = document.body.querySelector('[data-testid="confirm-modal-confirm"]') as HTMLButtonElement | null
+    expect(confirmButton?.textContent).toBe('Delete story')
+    confirmButton?.click()
     await flushPromises()
 
-    expect(window.confirm).toHaveBeenCalled()
+    expect(mockedDeleteStory).toHaveBeenCalledWith('story-1')
+  })
+
+  it('deletes a ready story from the dashboard after confirmation', async () => {
+    mockedGetStories.mockResolvedValue([
+      {
+        id: 'story-1',
+        child_id: 'child-1',
+        title: 'Ready Story',
+        theme: 'Bedtime',
+        status: 'ready',
+        target_page_count: 6,
+        art_style: 'Dreamy',
+        latest_error_message: null,
+        created_at: '2026-03-13T20:00:00Z',
+        updated_at: '2026-03-13T20:02:00Z',
+      },
+    ])
+    mockedDeleteStory.mockResolvedValue(undefined)
+
+    const wrapper = mount(DashboardView, {
+      global: {
+        stubs: {
+          RouterLink: {
+            template: '<a><slot /></a>',
+            props: ['to'],
+          },
+        },
+      },
+    })
+    await flushPromises()
+
+    await wrapper.get('button[aria-label="Delete story"]').trigger('click')
+    await nextTick()
+
+    expect(wrapper.text()).toContain('Ready Story')
+    const confirmButton = document.body.querySelector('[data-testid="confirm-modal-confirm"]') as HTMLButtonElement | null
+    expect(confirmButton?.textContent).toBe('Delete story')
+    confirmButton?.click()
+    await flushPromises()
+
     expect(mockedDeleteStory).toHaveBeenCalledWith('story-1')
   })
 
@@ -336,12 +379,14 @@ describe('story views', () => {
     })
     await flushPromises()
 
-    const deleteButton = wrapper.findAll('button').find((entry) => entry.text() === 'Delete failed story')
-    expect(deleteButton).toBeTruthy()
-    await deleteButton!.trigger('click')
+    await wrapper.get('button[aria-label="Delete story"]').trigger('click')
     await flushPromises()
 
-    expect(window.confirm).toHaveBeenCalled()
+    const confirmButton = document.body.querySelector('[data-testid="confirm-modal-confirm"]') as HTMLButtonElement | null
+    expect(confirmButton?.textContent).toBe('Delete story')
+    confirmButton?.click()
+    await flushPromises()
+
     expect(mockedDeleteStory).toHaveBeenCalledWith('story-1')
     expect(pushMock).toHaveBeenCalledWith({ name: 'dashboard' })
   })
