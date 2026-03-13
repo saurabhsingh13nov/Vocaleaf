@@ -39,6 +39,7 @@ A voice profile:
 	•	may be linked to multiple stories
 	•	may be created from one or more voice samples
 	•	has a lifecycle independent from individual sample files
+	•	may be deleted by the user along with all of its current samples
 
 voice_samples
 
@@ -49,6 +50,7 @@ A voice sample:
 	•	belongs to one voice_profile
 	•	points to an asset row for the uploaded audio file
 	•	stores metadata such as transcript, duration, quality score, and status
+	•	may be deleted individually if the upload failed, is obsolete, or was added by mistake
 
 Data model
 
@@ -89,21 +91,40 @@ Important fields:
 	•	created_at
 
 Recommended meaning of status:
+	•	pending = upload initiated but not yet confirmed in storage
 	•	uploaded = file accepted and recorded
 	•	processing = validation or provider-side preparation in progress
 	•	accepted = good sample for cloning
 	•	rejected = sample failed validation or quality review
 
+Current implementation status
+
+Phase 7 currently ships:
+	•	voice_profile creation and listing in the authenticated product UI
+	•	required consent capture at voice_profile creation time via `consent_confirmed`
+	•	browser recording via MediaRecorder and direct file upload as two sample-input paths
+	•	duration capture during upload initiation
+	•	private direct-to-storage uploads for raw voice samples
+	•	user-initiated deletion for individual voice_samples, including pending uploads
+	•	user-initiated deletion for whole voice_profiles with cascading sample removal
+	•	clearer phase-7 UI labels for profile state: `Add samples` before uploads and `Awaiting clone` after successful sample collection
+
+Not shipped yet:
+	•	separate `consents` table writes for voice cloning
+	•	clone initiation, provider submission, readiness polling, or webhook handling
+	•	raw sample playback/download in the normal user UI
+
 Upload flow
 
 Recommended voice sample upload flow:
-	1.	authenticated frontend requests a signed upload URL from FastAPI
-	2.	FastAPI verifies the user and creates an object key in a private voice-sample prefix
-	3.	FastAPI returns a short-lived signed upload URL
-	4.	browser uploads directly to object storage
-	5.	frontend notifies backend that upload completed
-	6.	backend creates an assets row with asset_type = voice_sample
-	7.	backend creates a voice_samples row linked to the target voice_profile
+	1.	authenticated frontend creates a voice_profile and records consent at that time
+	2.	authenticated frontend requests a signed upload URL for a specific voice_profile
+	3.	FastAPI verifies the user, validates MIME type/file size/duration, and creates an object key in a private voice-sample prefix
+	4.	FastAPI creates pending `assets` and `voice_samples` rows linked to the target voice_profile
+	5.	FastAPI returns a short-lived signed upload URL
+	6.	browser uploads directly to object storage
+	7.	frontend notifies backend that upload completed
+	8.	backend verifies the object exists in storage and marks the asset ready and the sample uploaded
 
 Why direct upload is preferred:
 	•	keeps large files out of the API process
@@ -117,7 +138,7 @@ Voice cloning requires explicit consent.
 Minimum expectations:
 	•	record consent before starting clone processing
 	•	set voice_profiles.consent_confirmed only after consent is captured
-	•	store a matching consent record for voice cloning
+	•	store a matching consent record for voice cloning when the consent/audit phase lands
 	•	do not allow clone processing for a profile without confirmed consent
 
 The system should assume voice data is highly sensitive.

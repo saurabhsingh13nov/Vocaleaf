@@ -83,6 +83,15 @@ describe('router auth guards', () => {
     expect(router.currentRoute.value.name).toBe('dashboard')
   })
 
+  it('redirects unauthenticated users away from voice profiles', async () => {
+    const authStore = useAuthStore(pinia)
+    authStore.clearUser()
+
+    await router.push('/voice-profiles')
+
+    expect(router.currentRoute.value.name).toBe('login')
+  })
+
   it('clears user state and redirects to login when initialization throws', async () => {
     const authStore = useAuthStore(pinia)
     authStore.user = sampleUser

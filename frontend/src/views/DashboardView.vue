@@ -78,7 +78,7 @@ async function handleLogout() {
         </div>
       </section>
 
-      <section class="grid gap-6 lg:grid-cols-3">
+      <section class="grid gap-6 lg:grid-cols-2 xl:grid-cols-4">
         <RouterLink
           :to="{ name: 'children' }"
           class="block rounded-[1.75rem] border border-amber-200 bg-amber-50 p-6 transition hover:shadow-md"
@@ -87,6 +87,17 @@ async function handleLogout() {
           <h2 class="mt-4 text-xl font-semibold text-amber-950">Child profiles</h2>
           <p class="mt-3 text-sm leading-6 text-amber-900/75">
             Create and manage child profiles to personalize stories, themes, and narration.
+          </p>
+        </RouterLink>
+
+        <RouterLink
+          :to="{ name: 'voice-profiles' }"
+          class="block rounded-[1.75rem] border border-violet-200 bg-violet-50 p-6 transition hover:shadow-md"
+        >
+          <p class="text-sm font-semibold uppercase tracking-[0.25em] text-violet-700">Narration</p>
+          <h2 class="mt-4 text-xl font-semibold text-violet-950">Voice profiles</h2>
+          <p class="mt-3 text-sm leading-6 text-violet-900/75">
+            Record or upload voice samples that will later be used for cloned narration.
           </p>
         </RouterLink>
 

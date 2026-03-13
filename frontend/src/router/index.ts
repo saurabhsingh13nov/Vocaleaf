@@ -4,6 +4,7 @@ import ChildrenView from '@/views/ChildrenView.vue'
 import DashboardView from '@/views/DashboardView.vue'
 import LoginView from '@/views/LoginView.vue'
 import RegisterView from '@/views/RegisterView.vue'
+import VoiceProfilesView from '@/views/VoiceProfilesView.vue'
 import { useAuthStore } from '@/stores/auth'
 import { pinia } from '@/stores/pinia'
 
@@ -46,6 +47,14 @@ const router = createRouter({
       path: '/children',
       name: 'children',
       component: ChildrenView,
+      meta: {
+        requiresAuth: true,
+      },
+    },
+    {
+      path: '/voice-profiles',
+      name: 'voice-profiles',
+      component: VoiceProfilesView,
       meta: {
         requiresAuth: true,
       },

@@ -335,6 +335,12 @@ Recommended pattern
 	•	queue cleanup jobs for storage deletion
 	•	separate user-facing deletion from storage lifecycle tasks
 
+Current voice-sample implementation
+	•	individual voice sample deletes are user-facing hard deletes
+	•	voice profile deletes cascade to all of that profile's voice samples
+	•	the backend attempts immediate R2 object deletion for raw voice-sample assets during these delete flows
+	•	if a raw sample object is already missing, the delete still succeeds and metadata is removed
+
 Voice sample retention
 
 Raw voice samples are the most sensitive stored media.

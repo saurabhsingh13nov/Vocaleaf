@@ -32,7 +32,7 @@ class VoiceSample(UUIDPrimaryKeyMixin, Base):
     transcript: Mapped[Optional[str]] = mapped_column(Text)
     sample_quality_score: Mapped[Optional[float]]
     status: Mapped[VoiceSampleStatus] = mapped_column(
-        default=VoiceSampleStatus.UPLOADED
+        default=VoiceSampleStatus.PENDING
     )
     created_at: Mapped[datetime] = mapped_column(server_default="now()")
 

@@ -12,7 +12,7 @@ The current product direction is a FastAPI backend plus background workers, Post
 
 ## Current Status
 
-This repository is in active development — phases 0 through 6 are complete.
+This repository is in active development — phases 0 through 7 are complete.
 
 - **Phase 0:** Project scaffolding — FastAPI + Vue 3 + Docker Compose
 - **Phase 1:** Database models — 17 ORM models, 12 enums, Alembic migrations
@@ -21,6 +21,7 @@ This repository is in active development — phases 0 through 6 are complete.
 - **Phase 4:** Child profiles CRUD — full-stack create/read/update/delete with ownership isolation
 - **Phase 5:** Google OAuth — Sign in with Google (ID token flow) + account linking flow when email conflicts with an existing password account
 - **Phase 6:** Storage & asset service — signed upload/read URLs, upload confirmation, R2 integration boundary, and private asset metadata lifecycle
+- **Phase 7:** Voice profiles and sample upload — profile creation with consent capture, browser recording/file upload, signed R2 sample uploads, sample/profile deletion, and private sample metadata lifecycle
 
 Architecture and schema docs are ahead of feature implementation by design.
 
@@ -75,7 +76,7 @@ cd backend
 uv run pytest
 
 cd frontend
-npm run test:unit
+npm run test:unit -- --run
 npm run build
 ```
 
@@ -108,23 +109,26 @@ Backend:
 - Google OAuth — Sign in with Google via ID token; account linking (`POST /api/auth/link-google`) when the email already has a password account
 - child profiles CRUD with per-user ownership enforcement
 - asset upload URL, confirm, and signed read endpoints with ownership enforcement
+- voice profile creation/listing plus voice sample upload/confirm/delete and profile delete endpoints
 - 17 ORM models and Alembic migrations for the full domain schema
-- 57 backend tests
+- 70 backend tests
 
 Frontend:
 
 - Vue auth flow with login, register, logout, and dashboard routing
 - Google Sign-In button on login and register pages; link-mode form when a 409 conflict occurs
 - child profiles management page with create/edit/delete
-- Pinia stores for auth and children state
-- 32 frontend unit tests for stores, router guards, auth views (including link-mode), and children views
+- voice profiles page with consent-gated profile creation, in-browser recording, file upload, sample deletion, and profile deletion
+- clearer phase-7 profile status labels in the UI (`Add samples`, `Awaiting clone`) instead of the raw backend `pending` state
+- Pinia stores for auth, children, and voice state
+- 46 frontend unit tests for stores, router guards, auth views (including link-mode), children views, and voice flows
 - build tooling and lint/type-check setup
 
 Not yet built:
 
 - story creation and story page APIs
 - async generation workers and provider integrations
-- voice sample upload and voice cloning workflows
+- voice cloning workflows
 
 ## Notes
 

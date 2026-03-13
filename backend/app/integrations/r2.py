@@ -98,6 +98,21 @@ class R2StorageClient:
             HttpMethod="GET",
         )
 
+    def delete_object(self, *, object_key: str) -> None:
+        try:
+            self._get_client().delete_object(
+                Bucket=self.bucket_name,
+                Key=object_key,
+            )
+        except Exception as exc:  # pragma: no cover - exercised via mocks in tests
+            error_code = None
+            response = getattr(exc, "response", None)
+            if isinstance(response, dict):
+                error_code = response.get("Error", {}).get("Code")
+            if error_code in {"404", "NoSuchKey", "NotFound"}:
+                raise R2ObjectNotFoundError("Object not found in R2") from exc
+            raise R2Error("Failed to delete object from R2") from exc
+
     def head_object(self, *, object_key: str) -> R2ObjectMetadata:
         try:
             response = self._get_client().head_object(

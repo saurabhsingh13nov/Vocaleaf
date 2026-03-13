@@ -27,6 +27,7 @@ class VoiceProfileStatus(str, enum.Enum):
 
 
 class VoiceSampleStatus(str, enum.Enum):
+    PENDING = "pending"
     UPLOADED = "uploaded"
     PROCESSING = "processing"
     ACCEPTED = "accepted"

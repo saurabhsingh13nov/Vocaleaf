@@ -2,7 +2,7 @@
 
 ## Context
 
-Vocaleaf is a personalized children's storybook web app. This plan started before implementation and still serves as the roadmap for the remaining work. The repository now contains the completed foundation for phases 0 through 6, and the later phases below remain the forward-looking build sequence.
+Vocaleaf is a personalized children's storybook web app. This plan started before implementation and still serves as the roadmap for the remaining work. The repository now contains the completed foundation for phases 0 through 7, and the later phases below remain the forward-looking build sequence.
 
 ## Current Repo Status (March 13, 2026)
 
@@ -13,6 +13,7 @@ Vocaleaf is a personalized children's storybook web app. This plan started befor
 - Phase 4 complete: child profiles CRUD — backend (schemas, service, routes, 17 tests) and frontend (service, Pinia store, components, view, 4 tests).
 - Phase 5 complete: Google OAuth — Sign in with Google (ID token flow) + account linking flow; auth and frontend coverage remain in place under the current test suite.
 - Phase 6 complete: storage and asset service — R2 integration boundary, signed upload/read URLs, upload confirmation, explicit asset upload lifecycle, backend asset tests, and manual local verification against a real R2 bucket.
+- Phase 7 complete: voice profiles and sample upload — consent-gated profile creation, voice profile listing, direct signed voice-sample uploads, sample confirmation, sample/profile deletion with raw-storage cleanup, browser recording/file-upload UI, clearer phase-7 status labels, and frontend/backend test coverage.
 - `npm run build` and all tests pass.
 
 ## Tech Stack (Locked In)
@@ -267,7 +268,7 @@ vocaleaf/
 
 ---
 
-### Phase 7: Voice Sample Upload & Profile Creation
+### Phase 7: Voice Sample Upload & Profile Creation ✅
 **Goal:** Upload voice samples and create voice profiles (no cloning yet).
 
 **Backend:**
@@ -286,7 +287,7 @@ vocaleaf/
 
 **Vue.js learning moment:** _Working with browser APIs (MediaRecorder) in Vue, file upload patterns, progress tracking with reactive state, direct-to-storage uploads._
 
-**Verification:** Create a voice profile, upload a voice sample, see it listed. Confirm the file exists in R2.
+**Verification:** Create a voice profile, upload a voice sample, see it listed, delete stale/pending samples, delete an accidental profile, and confirm the corresponding raw object cleanup in R2.
 
 ---
 

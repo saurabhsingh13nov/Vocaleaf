@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     r2_region: str = "auto"
     asset_upload_url_expire_seconds: int = 600
     asset_read_url_expire_seconds: int = 300
+    voice_sample_max_file_size_bytes: int = 25 * 1024 * 1024
 
     # JWT
     jwt_secret_key: str = "change-me-in-production"
