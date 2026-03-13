@@ -50,6 +50,15 @@ async function handleLogout() {
   await auth.logout()
   await router.push({ name: 'login' })
 }
+
+async function handleDeleteStory(storyId: string) {
+  const confirmed = window.confirm('Delete this failed story?')
+  if (!confirmed) {
+    return
+  }
+
+  await storiesStore.deleteStory(storyId)
+}
 </script>
 
 <template>
@@ -157,14 +166,16 @@ async function handleLogout() {
         </div>
 
         <div v-else class="mt-6 grid gap-4 md:grid-cols-2">
-          <RouterLink
+          <article
             v-for="story in storiesStore.stories"
             :key="story.id"
-            :to="{ name: 'story-detail', params: { storyId: story.id } }"
-            class="surface-card-muted block px-5 py-5 transition hover:-translate-y-0.5"
+            class="surface-card-muted px-5 py-5"
           >
             <div class="flex items-start justify-between gap-3">
-              <div>
+              <RouterLink
+                :to="{ name: 'story-detail', params: { storyId: story.id } }"
+                class="block min-w-0 flex-1 transition hover:-translate-y-0.5"
+              >
                 <p class="page-kicker">Story</p>
                 <h3 class="mt-2 text-2xl font-semibold text-[var(--app-ink)]">
                   {{ story.title || story.theme || 'Untitled Story' }}
@@ -172,13 +183,24 @@ async function handleLogout() {
                 <p class="mt-3 text-sm leading-6 text-[var(--app-muted)]">
                   {{ story.target_page_count ?? 0 }} pages · {{ new Date(story.created_at).toLocaleDateString() }}
                 </p>
-              </div>
+              </RouterLink>
 
               <span class="status-pill" :class="statusTone(story.status)">
                 {{ story.status }}
               </span>
             </div>
-          </RouterLink>
+
+            <div v-if="story.status === 'failed'" class="mt-5 flex justify-end">
+              <button
+                type="button"
+                class="secondary-button border-red-200 text-[var(--app-danger)] hover:border-red-300 hover:bg-red-50"
+                :disabled="storiesStore.isLoading"
+                @click="handleDeleteStory(story.id)"
+              >
+                Delete
+              </button>
+            </div>
+          </article>
         </div>
       </section>
     </div>

@@ -298,6 +298,82 @@ async def test_get_story_detail_returns_404_for_other_user(client: AsyncClient, 
     assert response.status_code == 404
 
 
+async def test_delete_failed_story_success(client: AsyncClient, db_session):
+    await register_and_get_client(client)
+    user = await get_user_by_email(db_session, "story-user@example.com")
+    child = Child(user_id=user.id, name="Luna", age=5)
+    story = Story(
+        user_id=user.id,
+        child=child,
+        title="Broken Story",
+        prompt="A quiet night",
+        status=StoryStatus.FAILED,
+        target_page_count=1,
+        language="en",
+    )
+    db_session.add_all([user, child, story])
+    await db_session.commit()
+
+    response = await client.delete(f"{STORIES_URL}/{story.id}")
+
+    assert response.status_code == 204
+
+    list_response = await client.get(STORIES_URL)
+    assert list_response.status_code == 200
+    assert list_response.json() == []
+
+    detail_response = await client.get(f"{STORIES_URL}/{story.id}")
+    assert detail_response.status_code == 404
+
+    refreshed_story = await get_story(db_session, str(story.id))
+    assert refreshed_story.status == StoryStatus.DELETED
+
+
+async def test_delete_failed_story_returns_404_for_other_user(client: AsyncClient, db_session):
+    await register_and_get_client(client, suffix="a")
+    user_a = await get_user_by_email(db_session, "story-usera@example.com")
+    child = Child(user_id=user_a.id, name="Luna", age=5)
+    story = Story(
+        user_id=user_a.id,
+        child=child,
+        title="Secret Story",
+        prompt="A quiet night",
+        status=StoryStatus.FAILED,
+        target_page_count=1,
+        language="en",
+    )
+    db_session.add_all([user_a, child, story])
+    await db_session.commit()
+
+    async with await create_additional_client(db_session) as client_b:
+        await register_and_get_client(client_b, suffix="b")
+        response = await client_b.delete(f"{STORIES_URL}/{story.id}")
+
+    assert response.status_code == 404
+
+
+async def test_delete_story_rejects_non_failed_status(client: AsyncClient, db_session):
+    await register_and_get_client(client)
+    user = await get_user_by_email(db_session, "story-user@example.com")
+    child = Child(user_id=user.id, name="Luna", age=5)
+    story = Story(
+        user_id=user.id,
+        child=child,
+        title="Ready Story",
+        prompt="A quiet night",
+        status=StoryStatus.READY,
+        target_page_count=1,
+        language="en",
+    )
+    db_session.add_all([user, child, story])
+    await db_session.commit()
+
+    response = await client.delete(f"{STORIES_URL}/{story.id}")
+
+    assert response.status_code == 409
+    assert "only failed stories" in response.json()["detail"].lower()
+
+
 async def test_run_text_generation_success(db_session, monkeypatch):
     from app.integrations.anthropic import StoryPageOutput, StoryTextOutput
 
@@ -460,3 +536,45 @@ async def test_run_text_generation_missing_story_is_graceful(db_session, monkeyp
     )
 
     assert fake_client.calls == []
+
+
+def test_anthropic_client_normalizes_authentication_failures(monkeypatch):
+    from app.integrations.anthropic import AnthropicClient, AnthropicError
+
+    class FakeMessages:
+        def create(self, **kwargs):
+            raise Exception(
+                "Error code: 401 - {'type': 'error', 'error': "
+                "{'type': 'authentication_error', 'message': 'invalid x-api-key'}}"
+            )
+
+    class FakeSdkClient:
+        def __init__(self, *, api_key: str):
+            self.api_key = api_key
+            self.messages = FakeMessages()
+
+    monkeypatch.setattr("app.integrations.anthropic._get_sdk_client_class", lambda: FakeSdkClient)
+
+    client = AnthropicClient(api_key="bad-key", model="test-model")
+
+    try:
+        client.generate_story_text(
+            child_name="Luna",
+            child_age=5,
+            favorite_themes=None,
+            favorite_characters=None,
+            bedtime_preferences=None,
+            prompt="A moon garden adventure",
+            theme="Bedtime",
+            art_style="Dreamy",
+            page_count=2,
+            reading_level="Preschool",
+            language="en",
+        )
+    except AnthropicError as exc:
+        assert str(exc) == (
+            "Anthropic authentication failed. "
+            "Update ANTHROPIC_API_KEY and restart the backend and worker."
+        )
+    else:  # pragma: no cover - defensive failure path
+        raise AssertionError("Expected AnthropicError")

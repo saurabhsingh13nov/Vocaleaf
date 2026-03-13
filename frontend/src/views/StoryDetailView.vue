@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import { useChildrenStore } from '@/stores/children'
 import { useStoriesStore } from '@/stores/stories'
 
 const route = useRoute()
+const router = useRouter()
 const storiesStore = useStoriesStore()
 const childrenStore = useChildrenStore()
 
@@ -63,6 +64,20 @@ async function loadStory(nextStoryId: string) {
     childrenStore.fetchChildren(),
     storiesStore.fetchStory(nextStoryId),
   ])
+}
+
+async function handleDeleteStory() {
+  if (!story.value) {
+    return
+  }
+
+  const confirmed = window.confirm('Delete this failed story?')
+  if (!confirmed) {
+    return
+  }
+
+  await storiesStore.deleteStory(story.value.id)
+  await router.push({ name: 'dashboard' })
 }
 
 watch(
@@ -193,6 +208,14 @@ onBeforeUnmount(() => {
           <p class="mx-auto mt-3 max-w-xl text-sm leading-6 text-[var(--app-muted)]">
             The story record is still saved. Review the error above and retry once the text worker is healthy again.
           </p>
+          <button
+            type="button"
+            class="secondary-button mt-6 border-red-200 text-[var(--app-danger)] hover:border-red-300 hover:bg-red-50"
+            :disabled="storiesStore.isLoading"
+            @click="handleDeleteStory"
+          >
+            Delete failed story
+          </button>
         </div>
       </section>
     </div>

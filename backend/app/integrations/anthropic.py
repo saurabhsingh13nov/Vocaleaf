@@ -209,7 +209,7 @@ class AnthropicClient:
         except AnthropicError:
             raise
         except Exception as exc:  # pragma: no cover - exercised via mocks in tests
-            detail = str(exc).strip() or "Anthropic story generation failed"
+            detail = _normalize_sdk_error_detail(exc)
             raise AnthropicError(detail) from exc
 
         response_text = _extract_text_block(response)
@@ -227,3 +227,16 @@ def get_anthropic_client() -> AnthropicClient:
         api_key=settings.anthropic_api_key,
         model=settings.anthropic_model,
     )
+
+
+def _normalize_sdk_error_detail(exc: Exception) -> str:
+    detail = str(exc).strip() or "Anthropic story generation failed"
+    lowered = detail.lower()
+
+    if "error code: 401" in lowered or "authentication_error" in lowered or "invalid x-api-key" in lowered:
+        return (
+            "Anthropic authentication failed. "
+            "Update ANTHROPIC_API_KEY and restart the backend and worker."
+        )
+
+    return detail

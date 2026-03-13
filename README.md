@@ -59,9 +59,12 @@ Run the backend:
 ```bash
 cd backend
 uv sync
+cp .env.example .env
 uv run alembic upgrade head
 uv run uvicorn app.main:app --reload --reload-dir app --reload-exclude '.venv/*'
 ```
+
+Set `ANTHROPIC_API_KEY` in `backend/.env` before using story text generation. Restart both the FastAPI server and the Celery worker after changing provider credentials.
 
 Run the frontend in a second terminal:
 
@@ -130,6 +133,7 @@ Backend:
 - voice profile creation/listing/detail plus voice sample upload/confirm/delete, manual clone initiation, and profile delete endpoints
 - Celery-backed voice clone worker that downloads uploaded samples from R2, calls the official ElevenLabs Python SDK, stores provider voice IDs on success, and uses process-local async DB sessions under the normal Celery prefork pool
 - story creation/list/detail endpoints with owned child/voice validation and latest generation error surfacing
+- failed story soft-delete so broken generation attempts can be removed from the dashboard and detail view
 - Celery-backed text generation worker that calls Anthropic, validates structured page output, stores `story_pages` and `story_page_generations`, and marks text-complete stories as ready for phase 9
 - 17 ORM models and Alembic migrations for the full domain schema
 - 94 backend tests

@@ -2,15 +2,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 
 import { useStoriesStore } from '@/stores/stories'
-import { createStory, getStory, getStories } from '@/services/stories'
+import { createStory, deleteStory, getStory, getStories } from '@/services/stories'
 
 vi.mock('@/services/stories', () => ({
   createStory: vi.fn(),
+  deleteStory: vi.fn(),
   getStory: vi.fn(),
   getStories: vi.fn(),
 }))
 
 const mockedCreateStory = vi.mocked(createStory)
+const mockedDeleteStory = vi.mocked(deleteStory)
 const mockedGetStory = vi.mocked(getStory)
 const mockedGetStories = vi.mocked(getStories)
 
@@ -147,5 +149,51 @@ describe('useStoriesStore', () => {
     await vi.advanceTimersByTimeAsync(4000)
 
     expect(store.error).toBe('Failed to refresh story status.')
+  })
+
+  it('deletes a story and clears local state', async () => {
+    mockedDeleteStory.mockResolvedValue(undefined)
+
+    const store = useStoriesStore()
+    store.stories = [
+      {
+        id: 'story-1',
+        child_id: 'child-1',
+        title: 'Broken Story',
+        theme: 'Bedtime',
+        status: 'failed',
+        target_page_count: 6,
+        art_style: 'Dreamy',
+        latest_error_message: 'Worker failed',
+        created_at: '2026-03-13T20:00:00Z',
+        updated_at: '2026-03-13T20:02:00Z',
+      },
+    ]
+    store.currentStory = {
+      id: 'story-1',
+      user_id: 'user-1',
+      child_id: 'child-1',
+      voice_profile_id: null,
+      title: 'Broken Story',
+      prompt: 'A lantern walk',
+      theme: 'Bedtime',
+      status: 'failed',
+      target_page_count: 6,
+      reading_level: 'Preschool',
+      language: 'en',
+      art_style: 'Dreamy',
+      latest_error_message: 'Worker failed',
+      created_at: '2026-03-13T20:00:00Z',
+      updated_at: '2026-03-13T20:02:00Z',
+      pages: [],
+    }
+    store.generatingStoryIds = ['story-1']
+
+    await store.deleteStory('story-1')
+
+    expect(mockedDeleteStory).toHaveBeenCalledWith('story-1')
+    expect(store.stories).toEqual([])
+    expect(store.currentStory).toBeNull()
+    expect(store.generatingStoryIds).toEqual([])
   })
 })

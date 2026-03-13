@@ -76,3 +76,7 @@ export async function getStory(storyId: string): Promise<Story> {
   const { data } = await api.get<Story>(`/stories/${storyId}`)
   return data
 }
+
+export async function deleteStory(storyId: string): Promise<void> {
+  await api.delete(`/stories/${storyId}`)
+}

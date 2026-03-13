@@ -8,7 +8,7 @@ import DashboardView from '@/views/DashboardView.vue'
 import StoryCreateView from '@/views/StoryCreateView.vue'
 import StoryDetailView from '@/views/StoryDetailView.vue'
 import { useAuth } from '@/composables/useAuth'
-import { createStory, getStory, getStories } from '@/services/stories'
+import { createStory, deleteStory, getStory, getStories } from '@/services/stories'
 import { getChildren } from '@/services/children'
 import { getVoiceProfiles } from '@/services/voice'
 
@@ -35,6 +35,7 @@ vi.mock('vue-router', async () => {
 
 vi.mock('@/services/stories', () => ({
   createStory: vi.fn(),
+  deleteStory: vi.fn(),
   getStory: vi.fn(),
   getStories: vi.fn().mockResolvedValue([]),
 }))
@@ -62,6 +63,7 @@ vi.mock('@/services/voice', () => ({
 }))
 
 const mockedCreateStory = vi.mocked(createStory)
+const mockedDeleteStory = vi.mocked(deleteStory)
 const mockedGetStory = vi.mocked(getStory)
 const mockedGetStories = vi.mocked(getStories)
 const mockedGetChildren = vi.mocked(getChildren)
@@ -102,6 +104,7 @@ describe('story views', () => {
     vi.clearAllMocks()
     setActivePinia(createPinia())
     routeRef.value = { params: { storyId: 'story-1' } }
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
     useAuthMock.mockReturnValue(makeAuthState())
     mockedGetStories.mockResolvedValue([])
     mockedGetChildren.mockResolvedValue([
@@ -263,5 +266,83 @@ describe('story views', () => {
     expect(wrapper.text()).toContain('New story')
     expect(wrapper.text()).toContain('Recent stories')
     expect(wrapper.text()).toContain('Lantern Walk')
+  })
+
+  it('deletes a failed story from the dashboard after confirmation', async () => {
+    mockedGetStories.mockResolvedValue([
+      {
+        id: 'story-1',
+        child_id: 'child-1',
+        title: 'Broken Story',
+        theme: 'Bedtime',
+        status: 'failed',
+        target_page_count: 6,
+        art_style: 'Dreamy',
+        latest_error_message: 'Worker failed',
+        created_at: '2026-03-13T20:00:00Z',
+        updated_at: '2026-03-13T20:02:00Z',
+      },
+    ])
+    mockedDeleteStory.mockResolvedValue(undefined)
+
+    const wrapper = mount(DashboardView, {
+      global: {
+        stubs: {
+          RouterLink: {
+            template: '<a><slot /></a>',
+            props: ['to'],
+          },
+        },
+      },
+    })
+    await flushPromises()
+
+    const deleteButton = wrapper.findAll('button').find((entry) => entry.text() === 'Delete')
+    expect(deleteButton).toBeTruthy()
+    await deleteButton!.trigger('click')
+    await flushPromises()
+
+    expect(window.confirm).toHaveBeenCalled()
+    expect(mockedDeleteStory).toHaveBeenCalledWith('story-1')
+  })
+
+  it('deletes a failed story from the detail view and returns to dashboard', async () => {
+    mockedGetStory.mockResolvedValue({
+      id: 'story-1',
+      user_id: 'user-1',
+      child_id: 'child-1',
+      voice_profile_id: null,
+      title: 'Broken Story',
+      prompt: 'A lantern walk',
+      theme: 'Bedtime',
+      status: 'failed',
+      target_page_count: 6,
+      reading_level: 'Preschool',
+      language: 'en',
+      art_style: 'Dreamy',
+      latest_error_message: 'Anthropic authentication failed.',
+      created_at: '2026-03-13T20:00:00Z',
+      updated_at: '2026-03-13T20:02:00Z',
+      pages: [],
+    })
+    mockedDeleteStory.mockResolvedValue(undefined)
+
+    const wrapper = mount(StoryDetailView, {
+      global: {
+        stubs: {
+          RouterLink: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const deleteButton = wrapper.findAll('button').find((entry) => entry.text() === 'Delete failed story')
+    expect(deleteButton).toBeTruthy()
+    await deleteButton!.trigger('click')
+    await flushPromises()
+
+    expect(window.confirm).toHaveBeenCalled()
+    expect(mockedDeleteStory).toHaveBeenCalledWith('story-1')
+    expect(pushMock).toHaveBeenCalledWith({ name: 'dashboard' })
   })
 })

@@ -4,6 +4,7 @@ import { defineStore } from 'pinia'
 
 import {
   createStory as createStoryRequest,
+  deleteStory as deleteStoryRequest,
   getStory as getStoryRequest,
   getStories as getStoriesRequest,
   type CreateStoryPayload,
@@ -73,6 +74,15 @@ export const useStoriesStore = defineStore('stories', () => {
     stopGenerationPolling(storyId)
   }
 
+  function removeStoryState(storyId: string) {
+    clearGeneratingState(storyId)
+    stories.value = stories.value.filter((entry) => entry.id !== storyId)
+
+    if (currentStory.value?.id === storyId) {
+      currentStory.value = null
+    }
+  }
+
   async function fetchStories(limit = 20, offset = 0) {
     isLoading.value = true
     error.value = null
@@ -132,6 +142,21 @@ export const useStoriesStore = defineStore('stories', () => {
     }
   }
 
+  async function deleteStory(storyId: string) {
+    isLoading.value = true
+    error.value = null
+
+    try {
+      await deleteStoryRequest(storyId)
+      removeStoryState(storyId)
+    } catch (e) {
+      error.value = getErrorMessage(e)
+      throw e
+    } finally {
+      isLoading.value = false
+    }
+  }
+
   function scheduleGenerationPoll(storyId: string) {
     stopGenerationPolling(storyId)
     if (!generatingStoryIds.value.includes(storyId)) {
@@ -178,6 +203,7 @@ export const useStoriesStore = defineStore('stories', () => {
   return {
     createStory,
     currentStory,
+    deleteStory,
     error,
     fetchStories,
     fetchStory,

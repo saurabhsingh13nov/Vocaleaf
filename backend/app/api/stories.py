@@ -12,6 +12,7 @@ from app.schemas.story import StoryCreate, StoryListItem, StoryResponse
 from app.services.story import (
     StoryError,
     create_story,
+    delete_story,
     get_story,
     list_stories,
     story_latest_error_message,
@@ -65,3 +66,15 @@ async def get_one(
         story,
         latest_error_message=story_latest_error_message(story),
     )
+
+
+@router.delete("/{story_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_one(
+    story_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        await delete_story(db, user_id=current_user.id, story_id=story_id)
+    except StoryError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)

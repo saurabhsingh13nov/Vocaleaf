@@ -158,5 +158,22 @@ async def get_story(
     return result.scalar_one_or_none()
 
 
+async def delete_story(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    story_id: uuid.UUID,
+) -> None:
+    story = await get_story(db, user_id=user_id, story_id=story_id)
+    if story is None:
+        raise StoryError("Story not found", status_code=404)
+
+    if story.status != StoryStatus.FAILED:
+        raise StoryError("Only failed stories can be deleted", status_code=409)
+
+    story.status = StoryStatus.DELETED
+    await db.commit()
+
+
 def story_latest_error_message(story: Story) -> str | None:
     return _latest_error_message(story)
