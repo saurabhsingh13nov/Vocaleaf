@@ -12,7 +12,7 @@ The current product direction is a FastAPI backend plus background workers, Post
 
 ## Current Status
 
-This repository is in active development — phases 0 through 8 are complete.
+This repository is in active development — phases 0 through 8 are complete, phase 9 (story creation + text generation) is in progress.
 
 - **Phase 0:** Project scaffolding — FastAPI + Vue 3 + Docker Compose
 - **Phase 1:** Database models — 17 ORM models, 12 enums, Alembic migrations
@@ -96,6 +96,7 @@ uv run celery -A app.tasks.celery_app worker --loglevel=info
 - [Storage](docs/storage.md)
 - [Voice](docs/voice.md)
 - [Story Generation](docs/story-generation.md)
+- [Phase 9 Plan — Story Text Generation](docs/plans/phase-9-story-text-generation.md)
 - [Build Plan](docs/plans/2026-03-11-build-plan.md)
 - [Claude Code Guidance](CLAUDE.md)
 
@@ -142,11 +143,16 @@ Frontend:
 - 50 frontend unit tests for stores, router guards, auth views (including link-mode), children views, and voice flows
 - build tooling and lint/type-check setup
 
+In progress (Phase 9):
+
+- story creation API and Claude text generation worker
+- story creation form and detail view with generation polling
+
 Not yet built:
 
-- story creation and story page APIs
-- async generation workers and provider integrations
-- story text/image/audio generation workflows
+- image generation workflows (Phase 10)
+- audio/TTS narration workflows (Phase 11)
+- story reader/playback UI (Phase 12)
 - provider-side voice deletion and preview sample generation
 
 ## Notes

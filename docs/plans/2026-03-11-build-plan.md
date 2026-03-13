@@ -316,6 +316,8 @@ vocaleaf/
 ---
 
 ### Phase 9: Story Creation & Text Generation
+**Detailed plan:** [`docs/plans/phase-9-story-text-generation.md`](phase-9-story-text-generation.md)
+
 **Goal:** Create a story and generate text content (title, page plan, narration text per page).
 
 **Backend:**
