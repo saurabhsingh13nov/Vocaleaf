@@ -233,6 +233,7 @@ Important fields:
 	•	bucket_name
 	•	object_key
 	•	asset_type
+	•	upload_status
 	•	mime_type
 	•	file_size_bytes
 	•	checksum
@@ -240,6 +241,7 @@ Important fields:
 	•	height
 	•	duration_ms
 	•	is_private
+	•	confirmed_at
 	•	created_at
 	•	deleted_at
 
@@ -251,6 +253,7 @@ Why generic assets are better than many file tables:
 Important rule:
 	•	Postgres stores only metadata
 	•	object storage stores file bytes
+	•	asset upload state should be explicit rather than inferred from missing metadata
 
 Story system
 

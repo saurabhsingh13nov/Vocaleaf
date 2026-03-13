@@ -58,6 +58,12 @@ class AssetType(str, enum.Enum):
     THUMBNAIL = "thumbnail"
 
 
+class AssetUploadStatus(str, enum.Enum):
+    PENDING = "pending"
+    READY = "ready"
+    FAILED = "failed"
+
+
 class JobStatus(str, enum.Enum):
     PENDING = "pending"
     RUNNING = "running"

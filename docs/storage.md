@@ -39,10 +39,12 @@ Postgres should store metadata such as:
 	•	storage provider
 	•	bucket name
 	•	object key
+	•	upload status
 	•	MIME type
 	•	file size
 	•	width/height for images
 	•	duration for audio
+	•	confirmed_at timestamp
 	•	privacy flags
 	•	deletion timestamps
 	•	relationships to stories, pages, and voice samples
@@ -166,11 +168,16 @@ Upload flow
 
 Recommended flow for uploads such as voice samples:
 	1.	authenticated frontend requests an upload URL from FastAPI
-	2.	FastAPI validates the user and creates an object key
-	3.	FastAPI returns a short-lived signed upload URL
+	2.	FastAPI validates the user, creates an assets row in pending state, and creates an object key
+	3.	FastAPI returns a short-lived signed upload URL and the asset_id
 	4.	browser uploads directly to object storage
 	5.	frontend notifies backend that upload completed
-	6.	backend creates the assets row and related domain rows
+	6.	backend confirms the object exists, marks the asset ready, and then creates related domain rows if needed
+
+Recommended asset lifecycle fields:
+	•	upload_status = pending until confirm succeeds
+	•	upload_status = ready after the backend verifies the object exists
+	•	confirmed_at records when the backend accepted the upload
 
 Why direct-to-storage upload is better
 
@@ -217,6 +224,7 @@ Recommended handling:
 	•	private bucket or private prefix
 	•	short-lived signed upload URLs only
 	•	no routine direct read access in the product UI
+	•	no generic signed read URL from the shared asset endpoint
 	•	backend-only access where possible
 	•	aggressive cleanup/retention policy
 

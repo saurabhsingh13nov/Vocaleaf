@@ -1,4 +1,4 @@
-"""Asset model — metadata for files stored in object storage."""
+"""Asset model — metadata and upload lifecycle for stored objects."""
 
 import uuid
 from datetime import datetime
@@ -8,7 +8,7 @@ from sqlalchemy import ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.models.enums import AssetType
+from app.models.enums import AssetType, AssetUploadStatus
 from app.models.mixins import UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
@@ -32,6 +32,10 @@ class Asset(UUIDPrimaryKeyMixin, Base):
     height: Mapped[Optional[int]]
     duration_ms: Mapped[Optional[int]]
     is_private: Mapped[bool] = mapped_column(default=True)
+    upload_status: Mapped[AssetUploadStatus] = mapped_column(
+        default=AssetUploadStatus.PENDING
+    )
+    confirmed_at: Mapped[Optional[datetime]]
     created_at: Mapped[datetime] = mapped_column(server_default="now()")
     deleted_at: Mapped[Optional[datetime]]
 

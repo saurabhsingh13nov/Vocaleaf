@@ -4,7 +4,7 @@
 
 Vocaleaf is a personalized children's storybook web app. This plan started before implementation and still serves as the roadmap for the remaining work. The repository now contains the completed foundation for phases 0 through 3, and the later phases below remain the forward-looking build sequence.
 
-## Current Repo Status (March 12, 2026)
+## Current Repo Status (March 13, 2026)
 
 - Phase 0 complete: backend/frontend scaffolding, local tooling, and Docker Compose exist.
 - Phase 1 complete: core SQLAlchemy models and the initial Alembic migration exist.
@@ -12,6 +12,7 @@ Vocaleaf is a personalized children's storybook web app. This plan started befor
 - Phase 3 complete: Vue auth flow, protected routing, and frontend unit tests exist.
 - Phase 4 complete: child profiles CRUD — backend (schemas, service, routes, 17 tests) and frontend (service, Pinia store, components, view, 4 tests).
 - Phase 5 complete: Google OAuth — Sign in with Google (ID token flow) + account linking flow; 49 backend tests, 32 frontend tests.
+- Phase 6 complete: storage and asset service — R2 integration boundary, signed upload/read URLs, upload confirmation, explicit asset upload lifecycle, and backend asset tests.
 - `npm run build` and all tests pass.
 
 ## Tech Stack (Locked In)
@@ -246,7 +247,7 @@ vocaleaf/
 
 ---
 
-### Phase 6: Storage & Asset Service
+### Phase 6: Storage & Asset Service ✅
 **Goal:** Upload and retrieve files from Cloudflare R2 via signed URLs.
 
 **Backend:**
