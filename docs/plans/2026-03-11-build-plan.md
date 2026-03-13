@@ -14,6 +14,7 @@ Vocaleaf is a personalized children's storybook web app. This plan started befor
 - Phase 5 complete: Google OAuth — Sign in with Google (ID token flow) + account linking flow; auth and frontend coverage remain in place under the current test suite.
 - Phase 6 complete: storage and asset service — R2 integration boundary, signed upload/read URLs, upload confirmation, explicit asset upload lifecycle, backend asset tests, and manual local verification against a real R2 bucket.
 - Phase 7 complete: voice profiles and sample upload — consent-gated profile creation, voice profile listing, direct signed voice-sample uploads, sample confirmation, sample/profile deletion with raw-storage cleanup, browser recording/file-upload UI, clearer phase-7 status labels, and frontend/backend test coverage.
+- Phase 8 complete: Celery + voice cloning worker — Redis-backed Celery app, manual clone initiation, official ElevenLabs Python SDK integration boundary, profile detail polling, worker-driven status transitions, and a mobile-first UI refresh across the current product surfaces.
 - `npm run build` and all tests pass.
 
 ## Tech Stack (Locked In)
@@ -291,7 +292,7 @@ vocaleaf/
 
 ---
 
-### Phase 8: Celery + Voice Cloning Worker
+### Phase 8: Celery + Voice Cloning Worker ✅
 **Goal:** Background job infrastructure + first real worker (voice cloning via ElevenLabs).
 
 **Backend:**
@@ -308,7 +309,7 @@ vocaleaf/
 - Add "Clone Voice" button to voice profile view
 - Poll for status updates (or use simple polling composable)
 
-**Vue.js learning moment:** _Polling patterns in Vue (setInterval in `onMounted`/`onUnmounted`), loading/error states, status indicators._
+**Shipped shape:** Clone initiation is manual, profile status remains the only user-facing async state, and the current app surfaces were refreshed into a calmer mobile-first UI during this phase.
 
 **Verification:** Upload samples, trigger clone, watch status go from `processing` to `ready`. Check ElevenLabs dashboard to confirm voice exists.
 

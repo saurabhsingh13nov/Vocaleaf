@@ -14,7 +14,6 @@ const form = reactive({
 })
 
 const errorMessage = ref('')
-const googleLoaded = ref(false)
 const pendingGoogleCredential = ref('')
 const linkPassword = ref('')
 const linkError = ref('')
@@ -71,7 +70,9 @@ async function handleGoogleCallback(response: { credential: string }) {
 
 onMounted(() => {
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
-  if (!clientId) return
+  if (!clientId) {
+    return
+  }
 
   const script = document.createElement('script')
   script.src = 'https://accounts.google.com/gsi/client'
@@ -86,91 +87,89 @@ onMounted(() => {
       document.getElementById('google-signin-btn-login')!,
       { theme: 'outline', size: 'large', width: '100%', text: 'signin_with' },
     )
-    googleLoaded.value = true
   }
   document.head.appendChild(script)
 })
 </script>
 
 <template>
-  <main class="min-h-screen bg-[radial-gradient(circle_at_top,#fef3c7,transparent_28%),linear-gradient(180deg,#fffaf0_0%,#fff7ed_45%,#fffbeb_100%)] px-6 py-10">
-    <div class="mx-auto flex min-h-[calc(100vh-5rem)] max-w-5xl items-center justify-center">
-      <div class="grid w-full overflow-hidden rounded-[2rem] border border-amber-200/80 bg-white/85 shadow-[0_20px_80px_-24px_rgba(146,64,14,0.35)] backdrop-blur lg:grid-cols-[1.1fr_0.9fr]">
-        <section class="hidden bg-amber-950 px-10 py-12 text-amber-50 lg:block">
-          <p class="text-xs font-semibold uppercase tracking-[0.35em] text-amber-300">Vocaleaf</p>
-          <h1 class="mt-8 max-w-sm text-4xl font-semibold leading-tight">
-            Sign in to keep bedtime stories personal.
-          </h1>
-          <p class="mt-6 max-w-md text-sm leading-7 text-amber-100/80">
-            Use the FastAPI auth backend already in the repo to manage your account, then the
-            dashboard becomes the starting point for child profiles and story creation.
+  <main class="min-h-screen px-4 py-6 sm:px-6 sm:py-8">
+    <div class="app-shell flex min-h-[calc(100vh-2rem)] items-center">
+      <div class="grid w-full gap-4 lg:grid-cols-[0.96fr_1.04fr]">
+        <section class="surface-card-muted order-2 px-6 py-7 sm:px-8 lg:order-1 lg:px-10 lg:py-10">
+          <p class="page-kicker">Vocaleaf</p>
+          <h1 class="page-title max-w-sm">Stories that sound like home.</h1>
+          <p class="page-subtitle max-w-md">
+            Sign in to manage child profiles, save narration voices, and pick up where bedtime left off.
           </p>
+
+          <div class="mt-8 grid gap-3 sm:grid-cols-2">
+            <div class="dashboard-tile">
+              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--app-muted-soft)]">
+                Mobile first
+              </p>
+              <p class="mt-3 text-sm leading-6 text-[var(--app-muted)]">
+                Core flows stay focused, fast, and easy to use on a phone.
+              </p>
+            </div>
+            <div class="dashboard-tile">
+              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--app-muted-soft)]">
+                Private by default
+              </p>
+              <p class="mt-3 text-sm leading-6 text-[var(--app-muted)]">
+                Voice samples and generated story assets stay behind authenticated access.
+              </p>
+            </div>
+          </div>
         </section>
 
-        <section class="px-6 py-10 sm:px-10">
-          <div class="mx-auto max-w-md">
-            <p class="text-sm font-medium uppercase tracking-[0.3em] text-amber-700 lg:hidden">
-              Vocaleaf
+        <section class="surface-card order-1 px-6 py-7 sm:px-8 lg:order-2 lg:px-10 lg:py-10">
+          <p class="page-kicker">Sign in</p>
+
+          <template v-if="pendingGoogleCredential">
+            <h2 class="mt-3 text-4xl font-semibold text-[var(--app-ink)]">Link your accounts</h2>
+            <p class="page-subtitle max-w-md">
+              Your Google account uses the same email as an existing Vocaleaf account. Enter your password to link them.
             </p>
 
-            <!-- Link mode: shown when Google 409 triggers account linking -->
-            <template v-if="pendingGoogleCredential">
-              <h2 class="mt-4 text-3xl font-semibold text-stone-900">Link your accounts</h2>
-              <p class="mt-2 text-sm text-stone-600">
-                Your Google account uses the same email as an existing Vocaleaf account. Enter your
-                password to link them.
+            <form class="mt-8 space-y-5" @submit.prevent="handleLinkSubmit">
+              <label>
+                <span class="field-label">Password</span>
+                <input
+                  v-model="linkPassword"
+                  class="field-input"
+                  type="password"
+                  autocomplete="current-password"
+                  required
+                />
+              </label>
+
+              <p
+                v-if="linkError"
+                class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+              >
+                {{ linkError }}
               </p>
 
-              <form class="mt-8 space-y-5" @submit.prevent="handleLinkSubmit">
-                <label class="block">
-                  <span class="mb-2 block text-sm font-medium text-stone-700">Password</span>
-                  <input
-                    v-model="linkPassword"
-                    class="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 text-stone-900 outline-none transition focus:border-amber-500 focus:ring-4 focus:ring-amber-200/60"
-                    type="password"
-                    autocomplete="current-password"
-                    required
-                  />
-                </label>
-
-                <p
-                  v-if="linkError"
-                  class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-                >
-                  {{ linkError }}
-                </p>
-
-                <button
-                  class="w-full rounded-2xl bg-amber-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-amber-300"
-                  type="submit"
-                  :disabled="auth.isLoading.value"
-                >
+              <div class="flex flex-col gap-3 sm:flex-row">
+                <button class="primary-button w-full" type="submit" :disabled="auth.isLoading.value">
                   {{ auth.isLoading.value ? 'Linking...' : 'Link accounts' }}
                 </button>
+                <button class="secondary-button w-full" type="button" @click="cancelLink">Cancel</button>
+              </div>
+            </form>
+          </template>
 
-                <button
-                  class="w-full rounded-2xl border border-stone-300 px-4 py-3 text-sm font-semibold text-stone-700 transition hover:bg-stone-50"
-                  type="button"
-                  @click="cancelLink"
-                >
-                  Cancel
-                </button>
-              </form>
-            </template>
-
-            <!-- Normal login form -->
-            <template v-else>
-            <h2 class="mt-4 text-3xl font-semibold text-stone-900">Welcome back</h2>
-            <p class="mt-2 text-sm text-stone-600">
-              Sign in with your email and password.
-            </p>
+          <template v-else>
+            <h2 class="mt-3 text-4xl font-semibold text-[var(--app-ink)]">Welcome back</h2>
+            <p class="page-subtitle max-w-md">Sign in with your email and password.</p>
 
             <form class="mt-8 space-y-5" @submit.prevent="handleSubmit">
-              <label class="block">
-                <span class="mb-2 block text-sm font-medium text-stone-700">Email</span>
+              <label>
+                <span class="field-label">Email</span>
                 <input
                   v-model="form.email"
-                  class="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 text-stone-900 outline-none transition focus:border-amber-500 focus:ring-4 focus:ring-amber-200/60"
+                  class="field-input"
                   type="email"
                   name="email"
                   autocomplete="email"
@@ -178,11 +177,11 @@ onMounted(() => {
                 />
               </label>
 
-              <label class="block">
-                <span class="mb-2 block text-sm font-medium text-stone-700">Password</span>
+              <label>
+                <span class="field-label">Password</span>
                 <input
                   v-model="form.password"
-                  class="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 text-stone-900 outline-none transition focus:border-amber-500 focus:ring-4 focus:ring-amber-200/60"
+                  class="field-input"
                   type="password"
                   name="password"
                   autocomplete="current-password"
@@ -197,31 +196,26 @@ onMounted(() => {
                 {{ errorMessage }}
               </p>
 
-              <button
-                class="w-full rounded-2xl bg-amber-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-amber-300"
-                type="submit"
-                :disabled="auth.isLoading.value"
-              >
+              <button class="primary-button w-full" type="submit" :disabled="auth.isLoading.value">
                 {{ auth.isLoading.value ? 'Signing in...' : 'Sign in' }}
               </button>
             </form>
 
-            <div class="my-6 flex items-center gap-4">
-              <hr class="flex-1 border-stone-200" />
-              <span class="text-xs font-medium uppercase tracking-wider text-stone-400">or</span>
-              <hr class="flex-1 border-stone-200" />
+            <div class="my-7 flex items-center gap-4">
+              <div class="h-px flex-1 bg-[var(--app-border)]"></div>
+              <span class="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--app-muted-soft)]">or</span>
+              <div class="h-px flex-1 bg-[var(--app-border)]"></div>
             </div>
 
             <div id="google-signin-btn-login" class="flex justify-center"></div>
 
-            <p class="mt-6 text-sm text-stone-600">
+            <p class="mt-6 text-sm text-[var(--app-muted)]">
               Need an account?
-              <RouterLink class="font-semibold text-amber-700 hover:text-amber-800" to="/register">
+              <RouterLink class="font-semibold text-[var(--app-accent)] transition hover:text-[var(--app-accent-strong)]" to="/register">
                 Create one
               </RouterLink>
             </p>
-            </template>
-          </div>
+          </template>
         </section>
       </div>
     </div>

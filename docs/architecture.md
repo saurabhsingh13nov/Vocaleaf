@@ -86,7 +86,7 @@ High-level system diagram
                │                     ┌───────────────────────────────────────┐
                │                     │         QUEUE / CACHE LAYER           │
                │                     ├───────────────────────────────────────┤
-               │                     │ Redis + job runner                    │
+               │                     │ Redis + Celery                        │
                │                     │ - async jobs                          │
                │                     │ - retries                             │
                │                     │ - transient coordination              │

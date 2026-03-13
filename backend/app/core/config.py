@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = "redis://localhost:6379/0"
 
+    # ElevenLabs
+    elevenlabs_api_key: str = ""
+    elevenlabs_base_url: str = "https://api.elevenlabs.io"
+
     # Google OAuth
     google_client_id: str = ""
 

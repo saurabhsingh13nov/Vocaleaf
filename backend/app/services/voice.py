@@ -1,4 +1,4 @@
-"""Voice profile and voice sample orchestration."""
+"""Voice profile orchestration and cloning entrypoints."""
 
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -148,6 +148,73 @@ async def list_voice_profiles(
         profile.voice_samples.sort(key=lambda sample: sample.created_at, reverse=True)
 
     return profiles
+
+
+def _sort_profile_samples(profile: VoiceProfile) -> VoiceProfile:
+    profile.voice_samples.sort(key=lambda sample: sample.created_at, reverse=True)
+    return profile
+
+
+async def get_voice_profile(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    profile_id: uuid.UUID,
+) -> VoiceProfile | None:
+    profile = await _get_owned_voice_profile(db, user_id=user_id, profile_id=profile_id)
+    if profile is None:
+        return None
+    return _sort_profile_samples(profile)
+
+
+def _eligible_clone_samples(profile: VoiceProfile) -> list[VoiceSample]:
+    eligible: list[VoiceSample] = []
+
+    for sample in profile.voice_samples:
+        asset = sample.asset
+        if (
+            sample.status == VoiceSampleStatus.UPLOADED
+            and asset is not None
+            and asset.upload_status == AssetUploadStatus.READY
+        ):
+            eligible.append(sample)
+
+    return eligible
+
+
+async def request_voice_clone(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    profile_id: uuid.UUID,
+) -> VoiceProfile:
+    profile = await _get_owned_voice_profile(db, user_id=user_id, profile_id=profile_id)
+    if profile is None:
+        raise VoiceError("Voice profile not found", status_code=404)
+
+    if not profile.consent_confirmed:
+        raise VoiceError("Voice cloning consent is required", status_code=400)
+
+    if profile.status == VoiceProfileStatus.READY:
+        raise VoiceError("Voice profile is already ready", status_code=409)
+
+    if profile.status != VoiceProfileStatus.PROCESSING and not _eligible_clone_samples(profile):
+        raise VoiceError("Upload at least one confirmed voice sample before cloning", status_code=400)
+
+    if profile.status == VoiceProfileStatus.PROCESSING:
+        return _sort_profile_samples(profile)
+
+    profile.status = VoiceProfileStatus.PROCESSING
+    profile.provider_voice_id = None
+    profile.provider = None
+    await db.commit()
+    await db.refresh(profile)
+    await db.refresh(profile, attribute_names=["voice_samples"])
+
+    from app.workers.voice_clone_worker import clone_voice_profile_task
+
+    clone_voice_profile_task.delay(str(profile.id))
+    return _sort_profile_samples(profile)
 
 
 async def create_voice_sample_upload(

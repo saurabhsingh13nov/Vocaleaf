@@ -65,6 +65,7 @@ async function startRecording() {
         if (!isSupportedVoiceSampleMimeType(normalizedMimeType)) {
           throw new Error(`This recording format is not supported: ${mimeType}`)
         }
+
         const file = new Blob(recordedChunks, { type: mimeType })
         const durationSeconds = await getAudioDurationSeconds(file)
         pendingFile.value = file
@@ -110,6 +111,7 @@ async function handleFileChange(event: Event) {
     if (!isSupportedVoiceSampleMimeType(normalizedMimeType)) {
       throw new Error(`This audio format is not supported: ${file.type || 'unknown format'}`)
     }
+
     const durationSeconds = await getAudioDurationSeconds(file)
     pendingFile.value = file
     pendingMimeType.value = normalizedMimeType
@@ -143,13 +145,13 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="rounded-2xl border border-rose-200 bg-rose-50/60 p-4">
+  <div class="surface-card-muted p-4 sm:p-5">
     <div class="flex flex-wrap gap-2">
       <button
         type="button"
         data-testid="voice-mode-record"
-        class="rounded-full px-4 py-2 text-sm font-semibold transition"
-        :class="mode === 'record' ? 'bg-stone-950 text-white' : 'bg-white text-stone-700 ring-1 ring-stone-200'"
+        class="secondary-button !px-4 !py-2"
+        :class="mode === 'record' ? '!border-[var(--app-accent)] !bg-[var(--app-accent-soft)] !text-[var(--app-accent-strong)]' : ''"
         @click="mode = 'record'"
       >
         Record
@@ -157,22 +159,24 @@ onBeforeUnmount(() => {
       <button
         type="button"
         data-testid="voice-mode-upload"
-        class="rounded-full px-4 py-2 text-sm font-semibold transition"
-        :class="mode === 'upload' ? 'bg-stone-950 text-white' : 'bg-white text-stone-700 ring-1 ring-stone-200'"
+        class="secondary-button !px-4 !py-2"
+        :class="mode === 'upload' ? '!border-[var(--app-accent)] !bg-[var(--app-accent-soft)] !text-[var(--app-accent-strong)]' : ''"
         @click="mode = 'upload'"
       >
         Upload file
       </button>
     </div>
 
-    <div v-if="mode === 'record'" class="mt-4 space-y-3">
-      <p class="text-sm text-stone-600">Record a short, clear sample directly in the browser.</p>
+    <div v-if="mode === 'record'" class="mt-4 space-y-4">
+      <p class="text-sm leading-6 text-[var(--app-muted)]">
+        Record a short, clean sample directly in the browser.
+      </p>
       <div class="flex flex-wrap items-center gap-3">
         <button
           v-if="!isRecording"
           type="button"
           data-testid="voice-start-recording"
-          class="rounded-xl bg-rose-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-600 disabled:cursor-not-allowed disabled:bg-rose-300"
+          class="primary-button"
           :disabled="props.isUploading"
           @click="startRecording"
         >
@@ -182,36 +186,40 @@ onBeforeUnmount(() => {
           v-else
           type="button"
           data-testid="voice-stop-recording"
-          class="rounded-xl bg-stone-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-stone-800"
+          class="secondary-button !border-[var(--app-ink)] !bg-[var(--app-ink)] !text-white hover:!bg-[var(--app-ink)]"
           @click="stopRecording"
         >
           Stop recording
         </button>
-        <span v-if="isRecording" class="text-sm font-medium text-rose-700">Recording in progress…</span>
+        <span v-if="isRecording" class="text-sm font-medium text-[var(--app-accent-strong)]">
+          Recording in progress…
+        </span>
       </div>
     </div>
 
-    <div v-else class="mt-4 space-y-3">
-      <p class="text-sm text-stone-600">Upload an existing audio clip in a supported format.</p>
+    <div v-else class="mt-4 space-y-4">
+      <p class="text-sm leading-6 text-[var(--app-muted)]">
+        Upload an existing audio clip in a supported format.
+      </p>
       <input
         data-testid="voice-file-input"
         type="file"
         accept="audio/webm,audio/wav,audio/x-wav,audio/mpeg,audio/mp4,audio/x-m4a,audio/ogg"
-        class="block w-full rounded-xl border border-dashed border-stone-300 bg-white px-4 py-3 text-sm text-stone-600"
+        class="field-input border-dashed"
         @change="handleFileChange"
       />
     </div>
 
     <div
       v-if="pendingFile && pendingDurationSeconds"
-      class="mt-4 rounded-xl bg-white px-4 py-3 ring-1 ring-rose-200"
+      class="mt-4 rounded-[1.25rem] border border-[var(--app-border)] bg-[rgba(255,253,249,0.9)] px-4 py-4"
     >
-      <p class="text-sm font-semibold text-stone-900">{{ pendingLabel || 'Sample ready' }}</p>
-      <p class="mt-1 text-sm text-stone-600">{{ pendingDurationSeconds.toFixed(1) }} sec</p>
+      <p class="text-sm font-semibold text-[var(--app-ink)]">{{ pendingLabel || 'Sample ready' }}</p>
+      <p class="mt-1 text-sm text-[var(--app-muted)]">{{ pendingDurationSeconds.toFixed(1) }} sec</p>
       <button
         type="button"
         data-testid="voice-submit-sample"
-        class="mt-3 rounded-xl bg-stone-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-400"
+        class="primary-button mt-4"
         :disabled="props.isUploading"
         @click="submitSample"
       >
@@ -221,7 +229,7 @@ onBeforeUnmount(() => {
 
     <div
       v-if="error"
-      class="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+      class="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
       role="alert"
     >
       {{ error }}

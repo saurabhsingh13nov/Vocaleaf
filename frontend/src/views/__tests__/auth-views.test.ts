@@ -366,7 +366,13 @@ describe('auth views', () => {
     })
     useAuthMock.mockReturnValue(authState)
 
-    const wrapper = mount(DashboardView)
+    const wrapper = mount(DashboardView, {
+      global: {
+        stubs: {
+          RouterLink: true,
+        },
+      },
+    })
 
     expect(wrapper.text()).toContain('Welcome, Parent Reader')
     expect(wrapper.text()).toContain('parent@example.com')

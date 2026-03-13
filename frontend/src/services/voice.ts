@@ -71,8 +71,18 @@ export async function getVoiceProfiles(): Promise<VoiceProfile[]> {
   return data
 }
 
+export async function getVoiceProfile(profileId: string): Promise<VoiceProfile> {
+  const { data } = await api.get<VoiceProfile>(`/voice-profiles/${profileId}`)
+  return data
+}
+
 export async function createVoiceProfile(payload: CreateVoiceProfilePayload): Promise<VoiceProfile> {
   const { data } = await api.post<VoiceProfile>('/voice-profiles', payload)
+  return data
+}
+
+export async function cloneVoiceProfile(profileId: string): Promise<VoiceProfile> {
+  const { data } = await api.post<VoiceProfile>(`/voice-profiles/${profileId}/clone`)
   return data
 }
 

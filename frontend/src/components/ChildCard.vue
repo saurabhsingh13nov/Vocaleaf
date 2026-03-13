@@ -12,26 +12,19 @@ defineEmits<{
 </script>
 
 <template>
-  <div class="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
-    <div class="flex items-start justify-between">
+  <article class="surface-card px-6 py-5 sm:px-7">
+    <div class="flex flex-wrap items-start justify-between gap-4">
       <div>
-        <h3 class="text-lg font-semibold text-stone-900">{{ child.name }}</h3>
-        <p v-if="child.age !== null" class="mt-1 text-sm text-stone-500">
-          Age {{ child.age }}
-        </p>
+        <p class="page-kicker">Child profile</p>
+        <h3 class="mt-2 text-3xl font-semibold text-[var(--app-ink)]">{{ child.name }}</h3>
+        <p v-if="child.age !== null" class="mt-3 text-sm text-[var(--app-muted)]">Age {{ child.age }}</p>
       </div>
 
-      <div class="flex gap-2">
+      <div class="flex flex-wrap gap-3">
+        <button type="button" class="secondary-button" @click="$emit('edit', child)">Edit</button>
         <button
           type="button"
-          class="rounded-lg px-3 py-1.5 text-sm font-medium text-stone-600 transition hover:bg-stone-100"
-          @click="$emit('edit', child)"
-        >
-          Edit
-        </button>
-        <button
-          type="button"
-          class="rounded-lg px-3 py-1.5 text-sm font-medium text-red-600 transition hover:bg-red-50"
+          class="secondary-button border-red-200 text-[var(--app-danger)] hover:border-red-300 hover:bg-red-50"
           @click="$emit('delete', child)"
         >
           Delete
@@ -39,8 +32,8 @@ defineEmits<{
       </div>
     </div>
 
-    <p class="mt-4 text-xs text-stone-400">
+    <p class="mt-5 text-xs uppercase tracking-[0.18em] text-[var(--app-muted-soft)]">
       Added {{ new Date(child.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) }}
     </p>
-  </div>
+  </article>
 </template>

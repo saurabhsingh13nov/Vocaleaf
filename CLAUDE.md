@@ -27,7 +27,7 @@ docker compose up -d
 cd backend
 uv sync                                 # Install/update deps
 uv run alembic upgrade head             # Run migrations
-uv run uvicorn app.main:app --reload    # Start API on :8000
+uv run uvicorn app.main:app --reload --reload-dir app --reload-exclude '.venv/*'  # Start API on :8000
 
 # 3. Start frontend (new terminal, from project root)
 cd frontend
@@ -151,6 +151,20 @@ Core backbone: `User -> Child -> Story -> StoryPage`
 - Keep provider-specific code behind service interfaces in `app/integrations/`.
 - Use explicit status enums and UUID primary keys. Track all timestamps.
 - Prefer modular monolith over microservices for v1.
+
+## Code Readability
+
+- Prefer clear naming and small helpers before adding comments.
+- Add docstrings for non-trivial modules, services, workers, and integrations.
+- Add inline comments only when a block’s intent or edge-case handling is not obvious from the code.
+- Do not add tutorial-style comments or line-by-line narration of framework basics.
+- When touching existing code, improve missing comments only where the extra context genuinely helps future readers.
+
+## Frontend Direction
+
+- Keep the current UI direction warm, editorial, and mobile-first.
+- Favor calm surfaces, restrained accent color, and concise copy over loud gradients or dense dashboards.
+- Design primary flows to read cleanly on narrow mobile screens first, then expand spacing and layout for desktop.
 
 ## Out of Scope for v1
 

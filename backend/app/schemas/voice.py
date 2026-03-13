@@ -47,7 +47,14 @@ class VoiceProfileResponse(BaseModel):
     def from_model(cls, profile) -> "VoiceProfileResponse":
         return cls.model_validate(
             {
-                **profile.__dict__,
+                "id": profile.id,
+                "user_id": profile.user_id,
+                "display_name": profile.display_name,
+                "status": profile.status,
+                "consent_confirmed": profile.consent_confirmed,
+                "default_for_user": profile.default_for_user,
+                "created_at": profile.created_at,
+                "updated_at": profile.updated_at,
                 "samples": list(profile.voice_samples),
             }
         )

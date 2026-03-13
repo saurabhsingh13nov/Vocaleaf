@@ -1,23 +1,27 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 
 import { useVoiceStore } from '@/stores/voice'
 import {
+  cloneVoiceProfile,
   confirmVoiceSampleUpload,
   createVoiceProfile,
   deleteVoiceProfile,
   deleteVoiceSample,
+  getVoiceProfile,
   getVoiceProfiles,
   requestVoiceSampleUpload,
   uploadVoiceSampleFile,
 } from '@/services/voice'
 
 vi.mock('@/services/voice', () => ({
+  cloneVoiceProfile: vi.fn(),
   confirmVoiceSampleUpload: vi.fn(),
   createVoiceProfile: vi.fn(),
   deleteVoiceProfile: vi.fn(),
   deleteVoiceSample: vi.fn(),
   getAudioDurationSeconds: vi.fn(),
+  getVoiceProfile: vi.fn(),
   getVoiceProfiles: vi.fn(),
   isSupportedVoiceSampleMimeType: vi.fn(() => true),
   normalizeVoiceSampleMimeType: vi.fn((mimeType: string) => mimeType.split(';', 1)[0]),
@@ -25,7 +29,9 @@ vi.mock('@/services/voice', () => ({
   uploadVoiceSampleFile: vi.fn(),
 }))
 
+const mockedCloneVoiceProfile = vi.mocked(cloneVoiceProfile)
 const mockedGetVoiceProfiles = vi.mocked(getVoiceProfiles)
+const mockedGetVoiceProfile = vi.mocked(getVoiceProfile)
 const mockedCreateVoiceProfile = vi.mocked(createVoiceProfile)
 const mockedDeleteVoiceProfile = vi.mocked(deleteVoiceProfile)
 const mockedDeleteVoiceSample = vi.mocked(deleteVoiceSample)
@@ -37,6 +43,12 @@ describe('useVoiceStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers()
+    vi.useRealTimers()
   })
 
   it('stores fetched voice profiles', async () => {
@@ -193,5 +205,78 @@ describe('useVoiceStore', () => {
 
     expect(mockedDeleteVoiceSample).toHaveBeenCalledWith('profile-1', 'sample-1')
     expect(store.profiles[0]?.samples).toHaveLength(0)
+  })
+
+  it('starts polling after clone and stores the refreshed profile', async () => {
+    mockedCloneVoiceProfile.mockResolvedValue({
+      id: 'profile-1',
+      user_id: 'user-1',
+      display_name: 'Bedtime Voice',
+      status: 'processing',
+      consent_confirmed: true,
+      default_for_user: false,
+      created_at: '2026-03-13T20:00:00Z',
+      updated_at: '2026-03-13T20:05:00Z',
+      samples: [
+        {
+          id: 'sample-1',
+          asset_id: 'asset-1',
+          duration_seconds: 3.7,
+          status: 'uploaded',
+          created_at: '2026-03-13T20:10:00Z',
+        },
+      ],
+    })
+    mockedGetVoiceProfile.mockResolvedValue({
+      id: 'profile-1',
+      user_id: 'user-1',
+      display_name: 'Bedtime Voice',
+      status: 'ready',
+      consent_confirmed: true,
+      default_for_user: false,
+      created_at: '2026-03-13T20:00:00Z',
+      updated_at: '2026-03-13T20:10:00Z',
+      samples: [
+        {
+          id: 'sample-1',
+          asset_id: 'asset-1',
+          duration_seconds: 3.7,
+          status: 'accepted',
+          created_at: '2026-03-13T20:10:00Z',
+        },
+      ],
+    })
+    const store = useVoiceStore()
+    store.profiles = [
+      {
+        id: 'profile-1',
+        user_id: 'user-1',
+        display_name: 'Bedtime Voice',
+        status: 'pending',
+        consent_confirmed: true,
+        default_for_user: false,
+        created_at: '2026-03-13T20:00:00Z',
+        updated_at: '2026-03-13T20:00:00Z',
+        samples: [
+          {
+            id: 'sample-1',
+            asset_id: 'asset-1',
+            duration_seconds: 3.7,
+            status: 'uploaded',
+            created_at: '2026-03-13T20:10:00Z',
+          },
+        ],
+      },
+    ]
+
+    await store.cloneProfile('profile-1')
+    expect(mockedCloneVoiceProfile).toHaveBeenCalledWith('profile-1')
+    expect(store.profiles[0]?.status).toBe('processing')
+
+    await vi.advanceTimersByTimeAsync(5000)
+
+    expect(mockedGetVoiceProfile).toHaveBeenCalledWith('profile-1')
+    expect(store.profiles[0]?.status).toBe('ready')
+    expect(store.isCloningProfile('profile-1')).toBe(false)
   })
 })

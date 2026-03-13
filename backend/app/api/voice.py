@@ -22,7 +22,9 @@ from app.services.voice import (
     create_voice_sample_upload,
     delete_voice_profile,
     delete_voice_sample,
+    get_voice_profile,
     list_voice_profiles,
+    request_voice_clone,
 )
 
 router = APIRouter(prefix="/api/voice-profiles", tags=["voice"])
@@ -49,6 +51,19 @@ async def list_profiles(
 ):
     profiles = await list_voice_profiles(db, user_id=current_user.id)
     return [VoiceProfileResponse.from_model(profile) for profile in profiles]
+
+
+@router.get("/{profile_id}", response_model=VoiceProfileResponse)
+async def get_profile(
+    profile_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    profile = await get_voice_profile(db, user_id=current_user.id, profile_id=profile_id)
+    if profile is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Voice profile not found")
+
+    return VoiceProfileResponse.from_model(profile)
 
 
 @router.post(
@@ -120,6 +135,24 @@ async def delete_profile(
 
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Voice profile not found")
+
+
+@router.post("/{profile_id}/clone", response_model=VoiceProfileResponse, status_code=status.HTTP_202_ACCEPTED)
+async def clone_profile(
+    profile_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        profile = await request_voice_clone(
+            db,
+            user_id=current_user.id,
+            profile_id=profile_id,
+        )
+    except VoiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+
+    return VoiceProfileResponse.from_model(profile)
 
 
 @router.delete("/{profile_id}/samples/{sample_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from functools import lru_cache
+from typing import Optional
 
 from app.core.config import settings
 
@@ -18,6 +19,12 @@ class R2ObjectNotFoundError(R2Error):
 class R2ObjectMetadata:
     file_size_bytes: int | None
     checksum: str | None
+
+
+@dataclass(frozen=True)
+class R2ObjectData:
+    content: bytes
+    content_type: Optional[str]
 
 
 class R2StorageClient:
@@ -133,6 +140,30 @@ class R2StorageClient:
         return R2ObjectMetadata(
             file_size_bytes=response.get("ContentLength"),
             checksum=checksum,
+        )
+
+    def download_object(self, *, object_key: str) -> R2ObjectData:
+        try:
+            response = self._get_client().get_object(
+                Bucket=self.bucket_name,
+                Key=object_key,
+            )
+        except Exception as exc:  # pragma: no cover - exercised via mocks in tests
+            error_code = None
+            response = getattr(exc, "response", None)
+            if isinstance(response, dict):
+                error_code = response.get("Error", {}).get("Code")
+            if error_code in {"404", "NoSuchKey", "NotFound"}:
+                raise R2ObjectNotFoundError("Object not found in R2") from exc
+            raise R2Error("Failed to download object from R2") from exc
+
+        body = response.get("Body")
+        if body is None:
+            raise R2Error("Downloaded object body was empty")
+
+        return R2ObjectData(
+            content=body.read(),
+            content_type=response.get("ContentType"),
         )
 
 

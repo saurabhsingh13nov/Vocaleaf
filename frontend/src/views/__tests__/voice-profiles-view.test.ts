@@ -4,9 +4,11 @@ import { createPinia, setActivePinia } from 'pinia'
 
 import VoiceProfilesView from '@/views/VoiceProfilesView.vue'
 import {
+  cloneVoiceProfile,
   createVoiceProfile,
   deleteVoiceProfile,
   deleteVoiceSample,
+  getVoiceProfile,
   getVoiceProfiles,
 } from '@/services/voice'
 
@@ -22,11 +24,13 @@ vi.mock('vue-router', async () => {
 })
 
 vi.mock('@/services/voice', () => ({
+  cloneVoiceProfile: vi.fn(),
   confirmVoiceSampleUpload: vi.fn(),
   createVoiceProfile: vi.fn(),
   deleteVoiceProfile: vi.fn(),
   deleteVoiceSample: vi.fn(),
   getAudioDurationSeconds: vi.fn(),
+  getVoiceProfile: vi.fn(),
   getVoiceProfiles: vi.fn().mockResolvedValue([]),
   isSupportedVoiceSampleMimeType: vi.fn(() => true),
   normalizeVoiceSampleMimeType: vi.fn((mimeType: string) => mimeType.split(';', 1)[0]),
@@ -34,7 +38,9 @@ vi.mock('@/services/voice', () => ({
   uploadVoiceSampleFile: vi.fn(),
 }))
 
+const mockedCloneVoiceProfile = vi.mocked(cloneVoiceProfile)
 const mockedGetVoiceProfiles = vi.mocked(getVoiceProfiles)
+const mockedGetVoiceProfile = vi.mocked(getVoiceProfile)
 const mockedCreateVoiceProfile = vi.mocked(createVoiceProfile)
 const mockedDeleteVoiceProfile = vi.mocked(deleteVoiceProfile)
 const mockedDeleteVoiceSample = vi.mocked(deleteVoiceSample)
@@ -54,6 +60,17 @@ describe('VoiceProfilesView', () => {
     vi.clearAllMocks()
     setActivePinia(createPinia())
     mockedGetVoiceProfiles.mockResolvedValue([])
+    mockedGetVoiceProfile.mockResolvedValue({
+      id: 'profile-1',
+      user_id: 'user-1',
+      display_name: 'Quiet Story Voice',
+      status: 'ready',
+      consent_confirmed: true,
+      default_for_user: false,
+      created_at: '2026-03-13T20:00:00Z',
+      updated_at: '2026-03-13T20:00:00Z',
+      samples: [],
+    })
     vi.stubGlobal('confirm', vi.fn(() => true))
   })
 
@@ -221,5 +238,59 @@ describe('VoiceProfilesView', () => {
 
     expect(wrapper.text()).toContain('Add samples')
     expect(wrapper.text()).not.toContain('PENDING')
+  })
+
+  it('shows a clone button when a profile has uploaded samples', async () => {
+    mockedGetVoiceProfiles.mockResolvedValue([
+      {
+        id: 'profile-1',
+        user_id: 'user-1',
+        display_name: 'Quiet Story Voice',
+        status: 'pending',
+        consent_confirmed: true,
+        default_for_user: false,
+        created_at: '2026-03-13T20:00:00Z',
+        updated_at: '2026-03-13T20:00:00Z',
+        samples: [
+          {
+            id: 'sample-1',
+            asset_id: 'asset-1',
+            duration_seconds: 3.7,
+            status: 'uploaded',
+            created_at: '2026-03-13T20:10:00Z',
+          },
+        ],
+      },
+    ])
+    mockedCloneVoiceProfile.mockResolvedValue({
+      id: 'profile-1',
+      user_id: 'user-1',
+      display_name: 'Quiet Story Voice',
+      status: 'processing',
+      consent_confirmed: true,
+      default_for_user: false,
+      created_at: '2026-03-13T20:00:00Z',
+      updated_at: '2026-03-13T20:05:00Z',
+      samples: [
+        {
+          id: 'sample-1',
+          asset_id: 'asset-1',
+          duration_seconds: 3.7,
+          status: 'uploaded',
+          created_at: '2026-03-13T20:10:00Z',
+        },
+      ],
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    const cloneButton = wrapper.findAll('button').find((entry) => entry.text() === 'Clone Voice')
+    expect(cloneButton).toBeTruthy()
+    await cloneButton!.trigger('click')
+    await flushPromises()
+
+    expect(mockedCloneVoiceProfile).toHaveBeenCalledWith('profile-1')
+    expect(wrapper.text()).toContain('Cloning...')
   })
 })

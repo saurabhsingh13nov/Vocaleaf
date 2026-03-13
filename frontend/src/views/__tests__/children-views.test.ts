@@ -45,7 +45,13 @@ describe('ChildrenView', () => {
   })
 
   it('renders empty state when no children exist', async () => {
-    const wrapper = mount(ChildrenView)
+    const wrapper = mount(ChildrenView, {
+      global: {
+        stubs: {
+          RouterLink: true,
+        },
+      },
+    })
     await flushPromises()
 
     expect(wrapper.text()).toContain('No child profiles yet')
@@ -56,7 +62,13 @@ describe('ChildrenView', () => {
     const { getChildren } = await import('@/services/children')
     vi.mocked(getChildren).mockResolvedValue([sampleChild])
 
-    const wrapper = mount(ChildrenView)
+    const wrapper = mount(ChildrenView, {
+      global: {
+        stubs: {
+          RouterLink: true,
+        },
+      },
+    })
     await flushPromises()
 
     expect(wrapper.text()).toContain('Luna')
@@ -72,7 +84,13 @@ describe('ChildrenView', () => {
       age: 3,
     })
 
-    const wrapper = mount(ChildrenView)
+    const wrapper = mount(ChildrenView, {
+      global: {
+        stubs: {
+          RouterLink: true,
+        },
+      },
+    })
     await flushPromises()
 
     // Click "Add your first child"
@@ -95,7 +113,13 @@ describe('ChildrenView', () => {
     vi.mocked(getChildren).mockResolvedValue([sampleChild])
     vi.mocked(deleteChild).mockResolvedValue(undefined)
 
-    const wrapper = mount(ChildrenView)
+    const wrapper = mount(ChildrenView, {
+      global: {
+        stubs: {
+          RouterLink: true,
+        },
+      },
+    })
     await flushPromises()
 
     // Find and click delete button

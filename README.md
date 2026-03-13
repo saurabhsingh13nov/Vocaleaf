@@ -12,7 +12,7 @@ The current product direction is a FastAPI backend plus background workers, Post
 
 ## Current Status
 
-This repository is in active development — phases 0 through 7 are complete.
+This repository is in active development — phases 0 through 8 are complete.
 
 - **Phase 0:** Project scaffolding — FastAPI + Vue 3 + Docker Compose
 - **Phase 1:** Database models — 17 ORM models, 12 enums, Alembic migrations
@@ -22,6 +22,7 @@ This repository is in active development — phases 0 through 7 are complete.
 - **Phase 5:** Google OAuth — Sign in with Google (ID token flow) + account linking flow when email conflicts with an existing password account
 - **Phase 6:** Storage & asset service — signed upload/read URLs, upload confirmation, R2 integration boundary, and private asset metadata lifecycle
 - **Phase 7:** Voice profiles and sample upload — profile creation with consent capture, browser recording/file upload, signed R2 sample uploads, sample/profile deletion, and private sample metadata lifecycle
+- **Phase 8:** Celery + voice cloning worker — Redis-backed job execution, manual clone initiation, official ElevenLabs Python SDK integration boundary, profile-status polling, and a refreshed mobile-first UI across the current app surfaces
 
 Architecture and schema docs are ahead of feature implementation by design.
 
@@ -58,7 +59,7 @@ Run the backend:
 cd backend
 uv sync
 uv run alembic upgrade head
-uv run uvicorn app.main:app --reload
+uv run uvicorn app.main:app --reload --reload-dir app --reload-exclude '.venv/*'
 ```
 
 Run the frontend in a second terminal:
@@ -80,6 +81,13 @@ npm run test:unit -- --run
 npm run build
 ```
 
+Run the Celery worker when voice cloning or later generation tasks are in use:
+
+```bash
+cd backend
+uv run celery -A app.tasks.celery_app worker --loglevel=info
+```
+
 ## Key Docs
 
 - [Architecture](docs/architecture.md)
@@ -99,6 +107,14 @@ npm run build
 - `assets` stores metadata only. File bytes belong in object storage.
 - Story generation is asynchronous. API requests should persist, enqueue, and return.
 
+## Code Readability
+
+- Prefer readable names and small functions before reaching for comments.
+- Add docstrings for non-trivial modules, services, workers, and integration boundaries.
+- Add inline comments only when intent is not obvious from the code itself.
+- Do not write tutorial comments or narrate simple assignments, branches, or framework basics.
+- When touching existing code, improve missing comments only where the added context materially helps.
+
 ## What Exists Today
 
 Backend:
@@ -109,29 +125,32 @@ Backend:
 - Google OAuth — Sign in with Google via ID token; account linking (`POST /api/auth/link-google`) when the email already has a password account
 - child profiles CRUD with per-user ownership enforcement
 - asset upload URL, confirm, and signed read endpoints with ownership enforcement
-- voice profile creation/listing plus voice sample upload/confirm/delete and profile delete endpoints
+- voice profile creation/listing/detail plus voice sample upload/confirm/delete, manual clone initiation, and profile delete endpoints
+- Celery-backed voice clone worker that downloads uploaded samples from R2, calls the official ElevenLabs Python SDK, and stores provider voice IDs on success
 - 17 ORM models and Alembic migrations for the full domain schema
-- 70 backend tests
+- 80 backend tests
 
 Frontend:
 
 - Vue auth flow with login, register, logout, and dashboard routing
 - Google Sign-In button on login and register pages; link-mode form when a 409 conflict occurs
 - child profiles management page with create/edit/delete
-- voice profiles page with consent-gated profile creation, in-browser recording, file upload, sample deletion, and profile deletion
+- voice profiles page with consent-gated profile creation, in-browser recording, file upload, sample deletion, profile deletion, manual clone trigger, and automatic status polling
 - clearer phase-7 profile status labels in the UI (`Add samples`, `Awaiting clone`) instead of the raw backend `pending` state
+- mobile-first warm editorial refresh across the current auth, dashboard, children, and voice surfaces
 - Pinia stores for auth, children, and voice state
-- 46 frontend unit tests for stores, router guards, auth views (including link-mode), children views, and voice flows
+- 50 frontend unit tests for stores, router guards, auth views (including link-mode), children views, and voice flows
 - build tooling and lint/type-check setup
 
 Not yet built:
 
 - story creation and story page APIs
 - async generation workers and provider integrations
-- voice cloning workflows
+- story text/image/audio generation workflows
 
 ## Notes
 
 - Media is intended to be private by default and accessed through signed URLs.
 - Voice samples are treated as highly sensitive and should not be exposed publicly.
+- The current frontend direction is mobile-first and intentionally restrained rather than heavily decorative.
 - If architecture, schema, auth, storage, voice, or generation behavior changes, update the matching doc under `docs/`.

@@ -1,27 +1,9 @@
-<!--
-  VUE.JS LEARNING NOTES:
-
-  <script setup lang="ts">
-    This is the Composition API with <script setup> — the modern way to write Vue components.
-    Code here runs once when the component mounts. No need for export default, data(), methods(), etc.
-
-  ref() — creates reactive state. When the value changes, the template re-renders automatically.
-  onMounted() — lifecycle hook that runs after the component is added to the DOM.
-
-  In the template:
-    {{ variable }} — renders reactive data
-    :class="..." — dynamic class binding (shorthand for v-bind:class)
--->
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 
-// ref() creates a reactive variable. Think of it like useState() in React.
-// The template automatically updates when this value changes.
 const apiStatus = ref<string>('checking...')
 const isHealthy = ref(false)
 
-// onMounted runs once after the component appears in the DOM.
-// This is where you make initial API calls.
 onMounted(async () => {
   try {
     const response = await fetch('/api/health')
@@ -36,22 +18,23 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-50 flex items-center justify-center">
-    <div class="text-center space-y-6">
-      <h1 class="text-4xl font-bold text-gray-900">Vocaleaf</h1>
-      <p class="text-lg text-gray-600">Personalized storybooks for your child</p>
-
-      <div
-        class="mt-8 p-4 rounded-lg border"
-        :class="isHealthy ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'"
-      >
-        <p
-          class="text-sm font-medium"
-          :class="isHealthy ? 'text-green-800' : 'text-red-800'"
-        >
-          API Status: {{ apiStatus }}
+  <main class="min-h-screen px-4 py-6 sm:px-6 sm:py-8">
+    <div class="app-shell flex min-h-[calc(100vh-2rem)] items-center justify-center">
+      <section class="surface-card w-full max-w-3xl px-6 py-8 text-center sm:px-10">
+        <p class="page-kicker">Vocaleaf</p>
+        <h1 class="page-title">Personalized storybooks for your child</h1>
+        <p class="page-subtitle mx-auto">
+          The frontend and backend foundations are connected. This landing view is kept intentionally light while authenticated flows live behind the dashboard.
         </p>
-      </div>
+
+        <div
+          class="mx-auto mt-8 max-w-sm rounded-[1.25rem] border px-4 py-4"
+          :class="isHealthy ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-800'"
+        >
+          <p class="text-xs font-semibold uppercase tracking-[0.24em]">API status</p>
+          <p class="mt-2 text-base font-semibold">{{ apiStatus }}</p>
+        </div>
+      </section>
     </div>
-  </div>
+  </main>
 </template>

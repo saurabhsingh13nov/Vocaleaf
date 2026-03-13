@@ -99,7 +99,7 @@ Recommended meaning of status:
 
 Current implementation status
 
-Phase 7 currently ships:
+Phases 7 and 8 currently ship:
 	•	voice_profile creation and listing in the authenticated product UI
 	•	required consent capture at voice_profile creation time via `consent_confirmed`
 	•	browser recording via MediaRecorder and direct file upload as two sample-input paths
@@ -108,10 +108,13 @@ Phase 7 currently ships:
 	•	user-initiated deletion for individual voice_samples, including pending uploads
 	•	user-initiated deletion for whole voice_profiles with cascading sample removal
 	•	clearer phase-7 UI labels for profile state: `Add samples` before uploads and `Awaiting clone` after successful sample collection
+	•	manual clone initiation from the voice profiles UI once at least one sample has been confirmed
+	•	Celery-backed clone execution using Redis and the official ElevenLabs Python SDK behind the integration boundary
+	•	profile-detail polling in the frontend until clone status reaches `ready` or `failed`
 
 Not shipped yet:
 	•	separate `consents` table writes for voice cloning
-	•	clone initiation, provider submission, readiness polling, or webhook handling
+	•	webhook-based provider completion handling
 	•	raw sample playback/download in the normal user UI
 
 Upload flow
@@ -163,10 +166,11 @@ Recommended lifecycle:
 	2.	user uploads one or more voice_samples
 	3.	system validates sample presence, duration, and basic quality
 	4.	system confirms consent exists
-	5.	background worker submits clone request to the configured provider
-	6.	voice_profile moves to processing
-	7.	on success, provider_voice_id is stored and voice_profile moves to ready
-	8.	on failure, voice_profile moves to failed with enough metadata for debugging
+	5.	user explicitly starts clone processing from the UI
+	6.	background worker submits clone request to the configured provider
+	7.	voice_profile moves to processing
+	8.	on success, provider_voice_id is stored and voice_profile moves to ready
+	9.	on failure, voice_profile moves to failed with enough metadata in logs for debugging
 
 Important rule:
 	•	clone work belongs in background workers, not synchronous API requests

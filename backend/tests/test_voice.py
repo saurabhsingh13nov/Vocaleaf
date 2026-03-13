@@ -1,17 +1,20 @@
 """Tests for voice profile and voice sample endpoints."""
 
 import uuid
+from types import SimpleNamespace
 
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
 from app.db.session import get_db
-from app.integrations.r2 import R2ObjectMetadata, R2ObjectNotFoundError
+from app.integrations.elevenlabs import ElevenLabsError
+from app.integrations.r2 import R2ObjectData, R2ObjectMetadata, R2ObjectNotFoundError
 from app.main import app as fastapi_app
 from app.models.asset import Asset
 from app.models.enums import AssetType, AssetUploadStatus, VoiceProfileStatus, VoiceSampleStatus
 from app.models.voice_profile import VoiceProfile
 from app.models.voice_sample import VoiceSample
+from app.workers.voice_clone_worker import run_voice_clone, run_voice_clone_in_session
 
 REGISTER_URL = "/api/auth/register"
 VOICE_PROFILE_URL = "/api/voice-profiles"
@@ -33,6 +36,11 @@ class FakeR2Client:
     def delete_object(self, *, object_key: str) -> None:
         self.deleted_keys.append(object_key)
         self.objects.pop(object_key, None)
+
+    def download_object(self, *, object_key: str) -> R2ObjectData:
+        if object_key not in self.objects:
+            raise R2ObjectNotFoundError("missing object")
+        return R2ObjectData(content=b"voice-sample", content_type="audio/webm")
 
 
 async def register_and_get_client(client: AsyncClient, suffix: str = "") -> AsyncClient:
@@ -57,17 +65,29 @@ async def create_additional_client(db_session) -> AsyncClient:
 
 
 async def get_voice_profile(db_session, profile_id: str) -> VoiceProfile:
-    result = await db_session.execute(select(VoiceProfile).where(VoiceProfile.id == uuid.UUID(profile_id)))
+    result = await db_session.execute(
+        select(VoiceProfile)
+        .where(VoiceProfile.id == uuid.UUID(profile_id))
+        .execution_options(populate_existing=True)
+    )
     return result.scalar_one()
 
 
 async def get_voice_sample(db_session, sample_id: str) -> VoiceSample:
-    result = await db_session.execute(select(VoiceSample).where(VoiceSample.id == uuid.UUID(sample_id)))
+    result = await db_session.execute(
+        select(VoiceSample)
+        .where(VoiceSample.id == uuid.UUID(sample_id))
+        .execution_options(populate_existing=True)
+    )
     return result.scalar_one()
 
 
 async def get_asset(db_session, asset_id: str) -> Asset:
-    result = await db_session.execute(select(Asset).where(Asset.id == uuid.UUID(asset_id)))
+    result = await db_session.execute(
+        select(Asset)
+        .where(Asset.id == uuid.UUID(asset_id))
+        .execution_options(populate_existing=True)
+    )
     return result.scalar_one()
 
 
@@ -160,6 +180,32 @@ async def test_list_voice_profiles_returns_nested_samples(client: AsyncClient, d
     assert len(data) == 1
     assert data[0]["samples"][0]["status"] == "uploaded"
     assert data[0]["samples"][0]["duration_seconds"] == 12.5
+
+
+async def test_get_voice_profile_returns_owned_profile(client: AsyncClient, db_session, monkeypatch):
+    fake_r2 = FakeR2Client()
+    monkeypatch.setattr("app.services.voice.get_r2_client", lambda: fake_r2)
+
+    await register_and_get_client(client)
+    profile = await create_profile(client)
+    upload_resp = await client.post(
+        f"{VOICE_PROFILE_URL}/{profile['id']}/samples",
+        json={
+            "mime_type": "audio/webm",
+            "file_size_bytes": 2048,
+            "duration_seconds": 9.5,
+        },
+    )
+    asset = await get_asset(db_session, upload_resp.json()["asset_id"])
+    fake_r2.objects[asset.object_key] = R2ObjectMetadata(file_size_bytes=2048, checksum="sample-1")
+    await client.post(f"{VOICE_PROFILE_URL}/{profile['id']}/samples/{upload_resp.json()['sample_id']}/confirm")
+
+    resp = await client.get(f"{VOICE_PROFILE_URL}/{profile['id']}")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["id"] == profile["id"]
+    assert body["samples"][0]["status"] == "uploaded"
 
 
 async def test_create_voice_sample_upload_creates_pending_records(client: AsyncClient, db_session, monkeypatch):
@@ -332,6 +378,180 @@ async def test_delete_pending_voice_sample_removes_sample_and_asset(client: Asyn
     asset_result = await db_session.execute(select(Asset).where(Asset.id == uuid.UUID(asset_id)))
     assert sample_result.scalar_one_or_none() is None
     assert asset_result.scalar_one_or_none() is None
+
+
+async def test_clone_voice_profile_marks_processing_and_enqueues_task(client: AsyncClient, db_session, monkeypatch):
+    fake_r2 = FakeR2Client()
+    monkeypatch.setattr("app.services.voice.get_r2_client", lambda: fake_r2)
+
+    task_calls: list[str] = []
+    monkeypatch.setattr(
+        "app.workers.voice_clone_worker.clone_voice_profile_task.delay",
+        lambda profile_id: task_calls.append(profile_id),
+    )
+
+    await register_and_get_client(client)
+    profile = await create_profile(client)
+    upload_resp = await client.post(
+        f"{VOICE_PROFILE_URL}/{profile['id']}/samples",
+        json={
+            "mime_type": "audio/webm",
+            "file_size_bytes": 1024,
+            "duration_seconds": 5.1,
+        },
+    )
+    asset = await get_asset(db_session, upload_resp.json()["asset_id"])
+    fake_r2.objects[asset.object_key] = R2ObjectMetadata(file_size_bytes=1024, checksum="etag-clone")
+    await client.post(f"{VOICE_PROFILE_URL}/{profile['id']}/samples/{upload_resp.json()['sample_id']}/confirm")
+
+    resp = await client.post(f"{VOICE_PROFILE_URL}/{profile['id']}/clone")
+
+    assert resp.status_code == 202
+    assert resp.json()["status"] == "processing"
+    assert task_calls == [profile["id"]]
+
+    refreshed_profile = await get_voice_profile(db_session, profile["id"])
+    assert refreshed_profile.status == VoiceProfileStatus.PROCESSING
+
+
+async def test_clone_voice_profile_requires_uploaded_sample(client: AsyncClient, monkeypatch):
+    fake_r2 = FakeR2Client()
+    monkeypatch.setattr("app.services.voice.get_r2_client", lambda: fake_r2)
+    monkeypatch.setattr(
+        "app.workers.voice_clone_worker.clone_voice_profile_task.delay",
+        lambda profile_id: None,
+    )
+
+    await register_and_get_client(client)
+    profile = await create_profile(client)
+
+    resp = await client.post(f"{VOICE_PROFILE_URL}/{profile['id']}/clone")
+
+    assert resp.status_code == 400
+    assert "confirmed voice sample" in resp.json()["detail"].lower()
+
+
+async def test_clone_voice_profile_is_idempotent_while_processing(client: AsyncClient, db_session, monkeypatch):
+    fake_r2 = FakeR2Client()
+    monkeypatch.setattr("app.services.voice.get_r2_client", lambda: fake_r2)
+
+    task_calls: list[str] = []
+    monkeypatch.setattr(
+        "app.workers.voice_clone_worker.clone_voice_profile_task.delay",
+        lambda profile_id: task_calls.append(profile_id),
+    )
+
+    await register_and_get_client(client)
+    profile = await create_profile(client)
+    upload_resp = await client.post(
+        f"{VOICE_PROFILE_URL}/{profile['id']}/samples",
+        json={
+            "mime_type": "audio/webm",
+            "file_size_bytes": 1024,
+            "duration_seconds": 5.1,
+        },
+    )
+    asset = await get_asset(db_session, upload_resp.json()["asset_id"])
+    fake_r2.objects[asset.object_key] = R2ObjectMetadata(file_size_bytes=1024, checksum="etag-clone")
+    await client.post(f"{VOICE_PROFILE_URL}/{profile['id']}/samples/{upload_resp.json()['sample_id']}/confirm")
+
+    first = await client.post(f"{VOICE_PROFILE_URL}/{profile['id']}/clone")
+    second = await client.post(f"{VOICE_PROFILE_URL}/{profile['id']}/clone")
+
+    assert first.status_code == 202
+    assert second.status_code == 202
+    assert task_calls == [profile["id"]]
+
+
+async def test_clone_voice_profile_rejects_ready_profile(client: AsyncClient, db_session, monkeypatch):
+    await register_and_get_client(client)
+    profile = await create_profile(client)
+
+    voice_profile = await get_voice_profile(db_session, profile["id"])
+    voice_profile.status = VoiceProfileStatus.READY
+    voice_profile.provider = "elevenlabs"
+    voice_profile.provider_voice_id = "voice_ready_123"
+    await db_session.commit()
+
+    resp = await client.post(f"{VOICE_PROFILE_URL}/{profile['id']}/clone")
+
+    assert resp.status_code == 409
+
+
+async def test_run_voice_clone_sets_profile_ready_and_marks_samples_accepted(
+    client: AsyncClient, db_session, monkeypatch
+):
+    fake_r2 = FakeR2Client()
+    monkeypatch.setattr("app.workers.voice_clone_worker.get_r2_client", lambda: fake_r2)
+    monkeypatch.setattr(
+        "app.workers.voice_clone_worker.get_elevenlabs_client",
+        lambda: SimpleNamespace(clone_voice=lambda display_name, samples: SimpleNamespace(voice_id="voice_123")),
+    )
+
+    await register_and_get_client(client)
+    profile = await create_profile(client)
+    upload_resp = await client.post(
+        f"{VOICE_PROFILE_URL}/{profile['id']}/samples",
+        json={
+            "mime_type": "audio/webm",
+            "file_size_bytes": 1024,
+            "duration_seconds": 5.1,
+        },
+    )
+    asset = await get_asset(db_session, upload_resp.json()["asset_id"])
+    fake_r2.objects[asset.object_key] = R2ObjectMetadata(file_size_bytes=1024, checksum="etag-clone")
+    sample = await get_voice_sample(db_session, upload_resp.json()["sample_id"])
+    asset.upload_status = AssetUploadStatus.READY
+    sample.status = VoiceSampleStatus.UPLOADED
+    await db_session.commit()
+
+    await run_voice_clone_in_session(db_session, uuid.UUID(profile["id"]))
+
+    refreshed_profile = await get_voice_profile(db_session, profile["id"])
+    refreshed_sample = await get_voice_sample(db_session, upload_resp.json()["sample_id"])
+    assert refreshed_profile.status == VoiceProfileStatus.READY
+    assert refreshed_profile.provider == "elevenlabs"
+    assert refreshed_profile.provider_voice_id == "voice_123"
+    assert refreshed_sample.status == VoiceSampleStatus.ACCEPTED
+
+
+async def test_run_voice_clone_marks_failed_and_restores_samples_on_provider_error(
+    client: AsyncClient, db_session, monkeypatch
+):
+    fake_r2 = FakeR2Client()
+    monkeypatch.setattr("app.workers.voice_clone_worker.get_r2_client", lambda: fake_r2)
+
+    def raise_clone_error(*, display_name, samples):
+        raise ElevenLabsError("provider unavailable")
+
+    monkeypatch.setattr(
+        "app.workers.voice_clone_worker.get_elevenlabs_client",
+        lambda: SimpleNamespace(clone_voice=raise_clone_error),
+    )
+
+    await register_and_get_client(client)
+    profile = await create_profile(client)
+    upload_resp = await client.post(
+        f"{VOICE_PROFILE_URL}/{profile['id']}/samples",
+        json={
+            "mime_type": "audio/webm",
+            "file_size_bytes": 1024,
+            "duration_seconds": 5.1,
+        },
+    )
+    asset = await get_asset(db_session, upload_resp.json()["asset_id"])
+    fake_r2.objects[asset.object_key] = R2ObjectMetadata(file_size_bytes=1024, checksum="etag-clone")
+    sample = await get_voice_sample(db_session, upload_resp.json()["sample_id"])
+    asset.upload_status = AssetUploadStatus.READY
+    sample.status = VoiceSampleStatus.UPLOADED
+    await db_session.commit()
+
+    await run_voice_clone_in_session(db_session, uuid.UUID(profile["id"]))
+
+    refreshed_profile = await get_voice_profile(db_session, profile["id"])
+    refreshed_sample = await get_voice_sample(db_session, upload_resp.json()["sample_id"])
+    assert refreshed_profile.status == VoiceProfileStatus.FAILED
+    assert refreshed_sample.status == VoiceSampleStatus.UPLOADED
 
 
 async def test_delete_uploaded_voice_sample_succeeds_when_object_missing(client: AsyncClient, db_session, monkeypatch):
