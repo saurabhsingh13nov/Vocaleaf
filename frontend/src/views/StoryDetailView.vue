@@ -12,6 +12,8 @@ const storiesStore = useStoriesStore()
 const childrenStore = useChildrenStore()
 const deleteModalOpen = ref(false)
 const isDeleting = ref(false)
+const isRetryingStory = ref(false)
+const retryingPageId = ref<string | null>(null)
 
 const storyId = computed(() => String(route.params.storyId ?? ''))
 const story = computed(() => (
@@ -34,13 +36,31 @@ const currentPage = computed(() => sortedPages.value[currentPageIndex.value] ?? 
 const imagesReadyCount = computed(() =>
   sortedPages.value.filter((p) => p.image_asset_id).length
 )
+const audioReadyCount = computed(() =>
+  sortedPages.value.filter((p) => p.audio_asset_id).length
+)
+const hasNarration = computed(() => (
+  story.value?.voice_profile_id !== null
+  && (
+    story.value?.status === 'generating'
+    || sortedPages.value.some((p) => Boolean(p.audio_asset_id) || p.status === 'complete' || p.status === 'audio_ready')
+  )
+))
+const completedProgressUnits = computed(() => imagesReadyCount.value + (hasNarration.value ? audioReadyCount.value : 0))
+const totalProgressUnits = computed(() => totalPages.value * (hasNarration.value ? 2 : 1))
 const progressPercent = computed(() =>
-  totalPages.value > 0 ? Math.round((imagesReadyCount.value / totalPages.value) * 100) : 0
+  totalProgressUnits.value > 0
+    ? Math.round((completedProgressUnits.value / totalProgressUnits.value) * 100)
+    : 0
 )
 const isGenerating = computed(() => story.value?.status === 'generating')
-const allImagesReady = computed(() =>
-  totalPages.value > 0 && imagesReadyCount.value === totalPages.value
-)
+const progressSummary = computed(() => {
+  if (totalPages.value === 0) return ''
+  if (hasNarration.value) {
+    return `${imagesReadyCount.value} of ${totalPages.value} illustrated · ${audioReadyCount.value} of ${totalPages.value} narrated`
+  }
+  return `${imagesReadyCount.value} of ${totalPages.value} illustrated`
+})
 
 // View mode: 'book' (one page at a time) or 'grid' (all pages)
 const viewMode = ref<'book' | 'grid'>('grid')
@@ -53,6 +73,7 @@ const lightboxIndex = ref(0)
 const pagesWithImages = computed(() =>
   sortedPages.value.filter((p) => p.image_asset_id && storiesStore.imageUrls[p.image_asset_id])
 )
+const canResumeMissingOutputs = computed(() => Boolean(story.value?.can_resume_missing_outputs))
 
 function openLightbox(pageIndex: number) {
   const page = sortedPages.value[pageIndex]
@@ -141,6 +162,10 @@ function pageStatusLabel(status: string) {
       return 'Text ready'
     case 'image_ready':
       return 'Illustrated'
+    case 'audio_ready':
+      return 'Narrated'
+    case 'complete':
+      return 'Illustrated & narrated'
     case 'failed':
       return 'Failed'
     default:
@@ -150,8 +175,11 @@ function pageStatusLabel(status: string) {
 
 function pageStatusTone(status: string) {
   switch (status) {
-    case 'image_ready':
+    case 'complete':
       return 'bg-emerald-100 text-emerald-700'
+    case 'audio_ready':
+    case 'image_ready':
+      return 'bg-sky-100 text-sky-700'
     case 'text_ready':
       return 'bg-amber-100 text-amber-700'
     case 'failed':
@@ -175,11 +203,76 @@ function getImageUrl(page: { image_asset_id: string | null }) {
   return storiesStore.imageUrls[page.image_asset_id] ?? null
 }
 
+function getAudioUrl(page: { audio_asset_id: string | null }) {
+  if (!page.audio_asset_id) return null
+  return storiesStore.audioUrls[page.audio_asset_id] ?? null
+}
+
+function formatDuration(durationMs: number | null) {
+  if (!durationMs || durationMs <= 0) return 'Length available after playback'
+
+  const totalSeconds = Math.round(durationMs / 1000)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+
+  if (minutes === 0) return `${seconds} sec`
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`
+}
+
+function retryableOutputs(page: { retryable_outputs?: Array<'image' | 'audio'> }) {
+  return page.retryable_outputs ?? []
+}
+
+function pageOutputError(page: { output_errors?: Partial<Record<'image' | 'audio', string>> }, output: 'image' | 'audio') {
+  return page.output_errors?.[output] ?? null
+}
+
+function pageRetryLabel(page: { retryable_outputs?: Array<'image' | 'audio'> }) {
+  const outputs = retryableOutputs(page)
+  if (outputs.length > 1) return 'Retry missing parts'
+  if (outputs[0] === 'audio') return 'Retry narration'
+  return 'Retry page illustration'
+}
+
+function isRetryingPage(pageId: string) {
+  return retryingPageId.value === pageId
+}
+
+function showNarrationPending(page: { status: string; audio_asset_id: string | null }) {
+  return hasNarration.value && !page.audio_asset_id && page.status === 'image_ready'
+}
+
+function showNarrationLoading(page: { audio_asset_id: string | null }) {
+  return Boolean(page.audio_asset_id && !getAudioUrl(page))
+}
+
 async function loadStory(nextStoryId: string) {
   await Promise.allSettled([
     childrenStore.fetchChildren(),
     storiesStore.fetchStory(nextStoryId),
   ])
+}
+
+async function retryStoryMissingOutputs() {
+  if (!story.value || !canResumeMissingOutputs.value) return
+
+  isRetryingStory.value = true
+  try {
+    await storiesStore.retryStoryMissingOutputs(story.value.id)
+  } finally {
+    isRetryingStory.value = false
+  }
+}
+
+async function retryPageMissingOutputs(pageId: string) {
+  if (!story.value) return
+
+  retryingPageId.value = pageId
+  try {
+    await storiesStore.retryStoryPageMissingOutputs(story.value.id, pageId)
+  } finally {
+    retryingPageId.value = null
+  }
 }
 
 function openDeleteModal() {
@@ -309,6 +402,15 @@ onUnmounted(() => {
               {{ story.art_style }}
             </span>
             <button
+              v-if="canResumeMissingOutputs"
+              type="button"
+              class="secondary-button"
+              :disabled="isRetryingStory || storiesStore.isLoading"
+              @click="retryStoryMissingOutputs"
+            >
+              {{ isRetryingStory ? 'Resuming…' : 'Resume missing parts' }}
+            </button>
+            <button
               type="button"
               class="secondary-button border-red-200 text-[var(--app-danger)] hover:border-red-300 hover:bg-red-50"
               aria-label="Delete story"
@@ -361,7 +463,7 @@ onUnmounted(() => {
           <!-- View mode toggle -->
           <div class="mb-6 flex items-center justify-between">
             <p class="text-sm font-semibold text-[var(--app-muted)]">
-              {{ imagesReadyCount }} of {{ totalPages }} illustrated
+              {{ progressSummary }}
             </p>
             <div class="flex gap-1 rounded-full border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-0.5">
               <button
@@ -421,8 +523,17 @@ onUnmounted(() => {
                   class="story-image-card story-image-card--failed"
                 >
                   <p class="text-sm font-semibold text-[var(--app-danger)]">Image generation failed</p>
-                  <button type="button" class="secondary-button mt-3 text-xs" disabled>
-                    Retry (coming soon)
+                  <p v-if="pageOutputError(page, 'image')" class="mt-2 text-xs leading-5 text-[var(--app-danger)]">
+                    {{ pageOutputError(page, 'image') }}
+                  </p>
+                  <button
+                    v-if="retryableOutputs(page).includes('image')"
+                    type="button"
+                    class="secondary-button mt-3 text-xs"
+                    :disabled="isRetryingPage(page.id) || storiesStore.isLoading"
+                    @click="retryPageMissingOutputs(page.id)"
+                  >
+                    {{ isRetryingPage(page.id) ? 'Retrying…' : pageRetryLabel(page) }}
                   </button>
                 </div>
 
@@ -444,6 +555,72 @@ onUnmounted(() => {
                 <p class="story-page-text mt-4 text-[var(--app-ink)]">
                   {{ page.text_content }}
                 </p>
+
+                <div
+                  v-if="retryableOutputs(page).includes('image') && !getImageUrl(page)"
+                  class="mt-5 rounded-[1.5rem] border border-red-200 bg-red-50 px-4 py-4"
+                >
+                  <div class="flex items-center justify-between gap-3">
+                    <p class="text-sm font-semibold text-[var(--app-danger)]">Illustration needs attention</p>
+                    <button
+                      type="button"
+                      class="secondary-button text-xs"
+                      :disabled="isRetryingPage(page.id) || storiesStore.isLoading"
+                      @click="retryPageMissingOutputs(page.id)"
+                    >
+                      {{ isRetryingPage(page.id) ? 'Retrying…' : pageRetryLabel(page) }}
+                    </button>
+                  </div>
+                  <p v-if="pageOutputError(page, 'image')" class="mt-2 text-sm leading-6 text-[var(--app-danger)]">
+                    {{ pageOutputError(page, 'image') }}
+                  </p>
+                </div>
+
+                <div
+                  v-if="getAudioUrl(page) || showNarrationPending(page) || showNarrationLoading(page)"
+                  class="mt-5 rounded-[1.5rem] border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-4 py-4"
+                >
+                  <div class="flex items-center justify-between gap-3">
+                    <p class="text-sm font-semibold text-[var(--app-ink)]">Page narration</p>
+                    <p class="text-xs text-[var(--app-muted)]">{{ formatDuration(page.duration_ms) }}</p>
+                  </div>
+
+                  <audio
+                    v-if="getAudioUrl(page)"
+                    :src="getAudioUrl(page)!"
+                    controls
+                    preload="none"
+                    class="mt-3 w-full"
+                  />
+
+                  <p v-else-if="showNarrationLoading(page)" class="mt-3 text-sm text-[var(--app-muted)]">
+                    Loading narration…
+                  </p>
+
+                  <p v-else class="mt-3 text-sm text-[var(--app-muted)]">
+                    Narrating this page now…
+                  </p>
+                </div>
+
+                <div
+                  v-else-if="retryableOutputs(page).includes('audio')"
+                  class="mt-5 rounded-[1.5rem] border border-red-200 bg-red-50 px-4 py-4"
+                >
+                  <div class="flex items-center justify-between gap-3">
+                    <p class="text-sm font-semibold text-[var(--app-danger)]">Narration needs attention</p>
+                    <button
+                      type="button"
+                      class="secondary-button text-xs"
+                      :disabled="isRetryingPage(page.id) || storiesStore.isLoading"
+                      @click="retryPageMissingOutputs(page.id)"
+                    >
+                      {{ isRetryingPage(page.id) ? 'Retrying…' : pageRetryLabel(page) }}
+                    </button>
+                  </div>
+                  <p v-if="pageOutputError(page, 'audio')" class="mt-2 text-sm leading-6 text-[var(--app-danger)]">
+                    {{ pageOutputError(page, 'audio') }}
+                  </p>
+                </div>
               </div>
             </article>
           </div>
@@ -475,6 +652,21 @@ onUnmounted(() => {
                     class="story-image-card story-image-card--failed"
                   >
                     <p class="text-sm font-semibold text-[var(--app-danger)]">Image generation failed</p>
+                    <p
+                      v-if="currentPage && pageOutputError(currentPage, 'image')"
+                      class="mt-2 text-xs leading-5 text-[var(--app-danger)]"
+                    >
+                      {{ pageOutputError(currentPage, 'image') }}
+                    </p>
+                    <button
+                      v-if="currentPage && retryableOutputs(currentPage).includes('image')"
+                      type="button"
+                      class="secondary-button mt-3 text-xs"
+                      :disabled="isRetryingPage(currentPage.id) || storiesStore.isLoading"
+                      @click="retryPageMissingOutputs(currentPage.id)"
+                    >
+                      {{ isRetryingPage(currentPage.id) ? 'Retrying…' : pageRetryLabel(currentPage) }}
+                    </button>
                   </div>
                   <div v-else class="story-image-card story-image-card--loading">
                     <span class="text-sm text-[var(--app-muted)]">Waiting…</span>
@@ -483,9 +675,82 @@ onUnmounted(() => {
 
                 <div class="story-spread__text">
                   <p class="page-kicker">Page {{ currentPage?.page_number }}</p>
+                  <span
+                    v-if="currentPage"
+                    class="status-pill mt-3 inline-flex"
+                    :class="pageStatusTone(currentPage.status)"
+                  >
+                    {{ pageStatusLabel(currentPage.status) }}
+                  </span>
                   <p class="story-page-text mt-4 text-[var(--app-ink)]">
                     {{ currentPage?.text_content }}
                   </p>
+
+                  <div
+                    v-if="currentPage && retryableOutputs(currentPage).includes('image') && !getImageUrl(currentPage)"
+                    class="mt-5 rounded-[1.5rem] border border-red-200 bg-red-50 px-4 py-4"
+                  >
+                    <div class="flex items-center justify-between gap-3">
+                      <p class="text-sm font-semibold text-[var(--app-danger)]">Illustration needs attention</p>
+                      <button
+                        type="button"
+                        class="secondary-button text-xs"
+                        :disabled="isRetryingPage(currentPage.id) || storiesStore.isLoading"
+                        @click="retryPageMissingOutputs(currentPage.id)"
+                      >
+                        {{ isRetryingPage(currentPage.id) ? 'Retrying…' : pageRetryLabel(currentPage) }}
+                      </button>
+                    </div>
+                    <p v-if="pageOutputError(currentPage, 'image')" class="mt-2 text-sm leading-6 text-[var(--app-danger)]">
+                      {{ pageOutputError(currentPage, 'image') }}
+                    </p>
+                  </div>
+
+                  <div
+                    v-if="currentPage && (getAudioUrl(currentPage) || showNarrationPending(currentPage) || showNarrationLoading(currentPage))"
+                    class="mt-5 rounded-[1.5rem] border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-4 py-4"
+                  >
+                    <div class="flex items-center justify-between gap-3">
+                      <p class="text-sm font-semibold text-[var(--app-ink)]">Page narration</p>
+                      <p class="text-xs text-[var(--app-muted)]">{{ formatDuration(currentPage.duration_ms) }}</p>
+                    </div>
+
+                    <audio
+                      v-if="getAudioUrl(currentPage)"
+                      :src="getAudioUrl(currentPage)!"
+                      controls
+                      preload="none"
+                      class="mt-3 w-full"
+                    />
+
+                    <p v-else-if="showNarrationLoading(currentPage)" class="mt-3 text-sm text-[var(--app-muted)]">
+                      Loading narration…
+                    </p>
+
+                    <p v-else class="mt-3 text-sm text-[var(--app-muted)]">
+                      Narrating this page now…
+                    </p>
+                  </div>
+
+                  <div
+                    v-else-if="currentPage && retryableOutputs(currentPage).includes('audio')"
+                    class="mt-5 rounded-[1.5rem] border border-red-200 bg-red-50 px-4 py-4"
+                  >
+                    <div class="flex items-center justify-between gap-3">
+                      <p class="text-sm font-semibold text-[var(--app-danger)]">Narration needs attention</p>
+                      <button
+                        type="button"
+                        class="secondary-button text-xs"
+                        :disabled="isRetryingPage(currentPage.id) || storiesStore.isLoading"
+                        @click="retryPageMissingOutputs(currentPage.id)"
+                      >
+                        {{ isRetryingPage(currentPage.id) ? 'Retrying…' : pageRetryLabel(currentPage) }}
+                      </button>
+                    </div>
+                    <p v-if="pageOutputError(currentPage, 'audio')" class="mt-2 text-sm leading-6 text-[var(--app-danger)]">
+                      {{ pageOutputError(currentPage, 'audio') }}
+                    </p>
+                  </div>
                 </div>
               </article>
             </Transition>

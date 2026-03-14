@@ -7,7 +7,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.enums import StoryPageStatus, StoryStatus
+from app.models.enums import GenerationType, JobStatus, StoryPageStatus, StoryStatus
 
 
 class StoryCreate(BaseModel):
@@ -15,7 +15,7 @@ class StoryCreate(BaseModel):
     voice_profile_id: uuid.UUID | None = None
     prompt: str | None = Field(default=None, max_length=2000)
     theme: str | None = Field(default=None, max_length=100)
-    target_page_count: int = Field(default=6, ge=4, le=12)
+    target_page_count: int = Field(default=6, ge=2, le=10)
     reading_level: str | None = Field(default=None, max_length=50)
     art_style: str | None = Field(default=None, max_length=100)
     language: str = Field(default="en", min_length=2, max_length=10)
@@ -33,6 +33,8 @@ class StoryPageResponse(BaseModel):
     image_asset_id: uuid.UUID | None
     audio_asset_id: uuid.UUID | None
     duration_ms: int | None
+    retryable_outputs: list[str] = Field(default_factory=list)
+    output_errors: dict[str, str] = Field(default_factory=dict)
     created_at: datetime
     updated_at: datetime
 
@@ -53,6 +55,7 @@ class StoryResponse(BaseModel):
     language: str
     art_style: str | None
     latest_error_message: str | None = None
+    can_resume_missing_outputs: bool = False
     created_at: datetime
     updated_at: datetime
     pages: list[StoryPageResponse]
@@ -64,7 +67,15 @@ class StoryResponse(BaseModel):
         *,
         latest_error_message: str | None = None,
     ) -> "StoryResponse":
-        pages = sorted(list(story.pages), key=lambda page: page.page_number)
+        story_requires_narration = story.voice_profile_id is not None
+        pages = [
+            _page_response_payload(
+                page,
+                story_requires_narration=story_requires_narration,
+                story_status=story.status,
+            )
+            for page in sorted(list(story.pages), key=lambda page: page.page_number)
+        ]
         return cls.model_validate(
             {
                 "id": story.id,
@@ -80,6 +91,7 @@ class StoryResponse(BaseModel):
                 "language": story.language,
                 "art_style": story.art_style,
                 "latest_error_message": latest_error_message,
+                "can_resume_missing_outputs": any(page["retryable_outputs"] for page in pages),
                 "created_at": story.created_at,
                 "updated_at": story.updated_at,
                 "pages": pages,
@@ -122,3 +134,81 @@ class StoryListItem(BaseModel):
                 "updated_at": story.updated_at,
             }
         )
+
+
+def _page_response_payload(
+    page,
+    *,
+    story_requires_narration: bool,
+    story_status: StoryStatus,
+) -> dict:
+    retryable_outputs = _retryable_outputs_for_page(
+        page,
+        story_requires_narration=story_requires_narration,
+        story_status=story_status,
+    )
+    return {
+        "id": page.id,
+        "page_number": page.page_number,
+        "text_content": page.text_content,
+        "image_prompt": page.image_prompt,
+        "continuity_notes": page.continuity_notes,
+        "status": page.status,
+        "image_asset_id": page.image_asset_id,
+        "audio_asset_id": page.audio_asset_id,
+        "duration_ms": page.duration_ms,
+        "retryable_outputs": retryable_outputs,
+        "output_errors": _output_errors_for_page(page),
+        "created_at": page.created_at,
+        "updated_at": page.updated_at,
+    }
+
+
+def _retryable_outputs_for_page(
+    page,
+    *,
+    story_requires_narration: bool,
+    story_status: StoryStatus,
+) -> list[str]:
+    outputs: list[str] = []
+    failed_story = story_status == StoryStatus.FAILED
+    failed_page = page.status == StoryPageStatus.FAILED
+
+    image_retryable = (
+        page.image_asset_id is None
+        and page.text_content is not None
+        and (failed_story or failed_page)
+    )
+    if image_retryable:
+        outputs.append(GenerationType.IMAGE.value)
+
+    audio_retryable = (
+        story_requires_narration
+        and page.image_asset_id is not None
+        and page.audio_asset_id is None
+        and (failed_story or failed_page)
+    )
+    if audio_retryable:
+        outputs.append(GenerationType.AUDIO.value)
+
+    return outputs
+
+
+def _output_errors_for_page(page) -> dict[str, str]:
+    latest_by_type: dict[str, object] = {}
+    for generation in sorted(
+        list(getattr(page, "page_generations", [])),
+        key=lambda entry: (entry.completed_at or entry.created_at, entry.created_at),
+    ):
+        latest_by_type[generation.generation_type.value] = generation
+
+    errors: dict[str, str] = {}
+    for generation_type, generation in latest_by_type.items():
+        if generation.status != JobStatus.FAILED:
+            continue
+        response_payload = generation.response_payload_json or {}
+        error_message = response_payload.get("error_message")
+        if isinstance(error_message, str) and error_message.strip():
+            errors[generation_type] = error_message
+
+    return errors

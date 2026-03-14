@@ -8,7 +8,15 @@ import DashboardView from '@/views/DashboardView.vue'
 import StoryCreateView from '@/views/StoryCreateView.vue'
 import StoryDetailView from '@/views/StoryDetailView.vue'
 import { useAuth } from '@/composables/useAuth'
-import { createStory, deleteStory, getStory, getStories } from '@/services/stories'
+import {
+  createStory,
+  deleteStory,
+  getAssetUrl,
+  getStory,
+  getStories,
+  retryStoryMissingOutputs,
+  retryStoryPageMissingOutputs,
+} from '@/services/stories'
 import { getChildren } from '@/services/children'
 import { getVoiceProfiles } from '@/services/voice'
 
@@ -36,8 +44,11 @@ vi.mock('vue-router', async () => {
 vi.mock('@/services/stories', () => ({
   createStory: vi.fn(),
   deleteStory: vi.fn(),
+  getAssetUrl: vi.fn().mockResolvedValue({ url: 'https://assets.example/file.mp3', expires_at: '2026-03-13T20:10:00Z' }),
   getStory: vi.fn(),
   getStories: vi.fn().mockResolvedValue([]),
+  retryStoryMissingOutputs: vi.fn(),
+  retryStoryPageMissingOutputs: vi.fn(),
 }))
 
 vi.mock('@/services/children', () => ({
@@ -64,8 +75,11 @@ vi.mock('@/services/voice', () => ({
 
 const mockedCreateStory = vi.mocked(createStory)
 const mockedDeleteStory = vi.mocked(deleteStory)
+const mockedGetAssetUrl = vi.mocked(getAssetUrl)
 const mockedGetStory = vi.mocked(getStory)
 const mockedGetStories = vi.mocked(getStories)
+const mockedRetryStoryMissingOutputs = vi.mocked(retryStoryMissingOutputs)
+const mockedRetryStoryPageMissingOutputs = vi.mocked(retryStoryPageMissingOutputs)
 const mockedGetChildren = vi.mocked(getChildren)
 const mockedGetVoiceProfiles = vi.mocked(getVoiceProfiles)
 
@@ -107,6 +121,7 @@ describe('story views', () => {
     routeRef.value = { params: { storyId: 'story-1' } }
     useAuthMock.mockReturnValue(makeAuthState())
     mockedGetStories.mockResolvedValue([])
+    mockedGetAssetUrl.mockResolvedValue({ url: 'https://assets.example/file.mp3', expires_at: '2026-03-13T20:10:00Z' })
     mockedGetChildren.mockResolvedValue([
       {
         id: 'child-1',
@@ -150,6 +165,7 @@ describe('story views', () => {
       language: 'en',
       art_style: 'Dreamy',
       latest_error_message: null,
+      can_resume_missing_outputs: false,
       created_at: '2026-03-13T20:00:00Z',
       updated_at: '2026-03-13T20:00:00Z',
       pages: [],
@@ -202,6 +218,7 @@ describe('story views', () => {
       language: 'en',
       art_style: 'Dreamy',
       latest_error_message: null,
+      can_resume_missing_outputs: false,
       created_at: '2026-03-13T20:00:00Z',
       updated_at: '2026-03-13T20:02:00Z',
       pages: [
@@ -215,6 +232,8 @@ describe('story views', () => {
           image_asset_id: null,
           audio_asset_id: null,
           duration_ms: null,
+          retryable_outputs: [],
+          output_errors: {},
           created_at: '2026-03-13T20:01:00Z',
           updated_at: '2026-03-13T20:02:00Z',
         },
@@ -233,6 +252,57 @@ describe('story views', () => {
     expect(wrapper.text()).toContain('Lantern Walk')
     expect(wrapper.text()).toContain('The lantern glowed softly beneath the moon.')
     expect(wrapper.text()).toContain('Illustrating')
+  })
+
+  it('renders per-page narration when audio is available', async () => {
+    mockedGetStory.mockResolvedValue({
+      id: 'story-1',
+      user_id: 'user-1',
+      child_id: 'child-1',
+      voice_profile_id: 'voice-1',
+      title: 'Lantern Walk',
+      prompt: 'A lantern walk',
+      theme: 'Bedtime',
+      status: 'ready',
+      target_page_count: 1,
+      reading_level: 'Preschool',
+      language: 'en',
+      art_style: 'Dreamy',
+      latest_error_message: null,
+      can_resume_missing_outputs: false,
+      created_at: '2026-03-13T20:00:00Z',
+      updated_at: '2026-03-13T20:02:00Z',
+      pages: [
+        {
+          id: 'page-1',
+          page_number: 1,
+          text_content: 'The lantern glowed softly beneath the moon.',
+          image_prompt: 'A lantern beneath the moon',
+          continuity_notes: 'Keep the lantern warm and golden.',
+          status: 'complete',
+          image_asset_id: null,
+          audio_asset_id: 'audio-1',
+          duration_ms: 4200,
+          retryable_outputs: [],
+          output_errors: {},
+          created_at: '2026-03-13T20:01:00Z',
+          updated_at: '2026-03-13T20:02:00Z',
+        },
+      ],
+    })
+
+    const wrapper = mount(StoryDetailView, {
+      global: {
+        stubs: {
+          RouterLink: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(mockedGetAssetUrl).toHaveBeenCalledWith('audio-1')
+    expect(wrapper.text()).toContain('Page narration')
+    expect(wrapper.find('audio').exists()).toBe(true)
   })
 
   it('renders a ready story as the dashboard hero', async () => {
@@ -415,6 +485,7 @@ describe('story views', () => {
       language: 'en',
       art_style: 'Dreamy',
       latest_error_message: 'Anthropic authentication failed.',
+      can_resume_missing_outputs: false,
       created_at: '2026-03-13T20:00:00Z',
       updated_at: '2026-03-13T20:02:00Z',
       pages: [],
@@ -440,5 +511,181 @@ describe('story views', () => {
 
     expect(mockedDeleteStory).toHaveBeenCalledWith('story-1')
     expect(pushMock).toHaveBeenCalledWith({ name: 'dashboard' })
+  })
+
+  it('retries missing outputs for the whole story from detail view', async () => {
+    mockedGetStory.mockResolvedValue({
+      id: 'story-1',
+      user_id: 'user-1',
+      child_id: 'child-1',
+      voice_profile_id: 'voice-1',
+      title: 'Broken Story',
+      prompt: 'A lantern walk',
+      theme: 'Bedtime',
+      status: 'failed',
+      target_page_count: 1,
+      reading_level: 'Preschool',
+      language: 'en',
+      art_style: 'Dreamy',
+      latest_error_message: 'Gemini image generation returned no images.',
+      can_resume_missing_outputs: true,
+      created_at: '2026-03-13T20:00:00Z',
+      updated_at: '2026-03-13T20:02:00Z',
+      pages: [
+        {
+          id: 'page-1',
+          page_number: 1,
+          text_content: 'The lantern glowed softly beneath the moon.',
+          image_prompt: 'A lantern beneath the moon',
+          continuity_notes: 'Keep the lantern warm and golden.',
+          status: 'failed',
+          image_asset_id: null,
+          audio_asset_id: null,
+          duration_ms: null,
+          retryable_outputs: ['image'],
+          output_errors: { image: 'Gemini image generation returned no images.' },
+          created_at: '2026-03-13T20:01:00Z',
+          updated_at: '2026-03-13T20:02:00Z',
+        },
+      ],
+    })
+    mockedRetryStoryMissingOutputs.mockResolvedValue({
+      id: 'story-1',
+      user_id: 'user-1',
+      child_id: 'child-1',
+      voice_profile_id: 'voice-1',
+      title: 'Broken Story',
+      prompt: 'A lantern walk',
+      theme: 'Bedtime',
+      status: 'generating',
+      target_page_count: 1,
+      reading_level: 'Preschool',
+      language: 'en',
+      art_style: 'Dreamy',
+      latest_error_message: null,
+      can_resume_missing_outputs: false,
+      created_at: '2026-03-13T20:00:00Z',
+      updated_at: '2026-03-13T20:03:00Z',
+      pages: [
+        {
+          id: 'page-1',
+          page_number: 1,
+          text_content: 'The lantern glowed softly beneath the moon.',
+          image_prompt: 'A lantern beneath the moon',
+          continuity_notes: 'Keep the lantern warm and golden.',
+          status: 'text_ready',
+          image_asset_id: null,
+          audio_asset_id: null,
+          duration_ms: null,
+          retryable_outputs: [],
+          output_errors: {},
+          created_at: '2026-03-13T20:01:00Z',
+          updated_at: '2026-03-13T20:03:00Z',
+        },
+      ],
+    })
+
+    const wrapper = mount(StoryDetailView, {
+      global: {
+        stubs: {
+          RouterLink: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const retryButton = wrapper.findAll('button').find((entry) => entry.text().includes('Resume missing parts'))
+    await retryButton?.trigger('click')
+    await flushPromises()
+
+    expect(mockedRetryStoryMissingOutputs).toHaveBeenCalledWith('story-1')
+  })
+
+  it('retries missing outputs for a single page from detail view', async () => {
+    mockedGetStory.mockResolvedValue({
+      id: 'story-1',
+      user_id: 'user-1',
+      child_id: 'child-1',
+      voice_profile_id: 'voice-1',
+      title: 'Broken Story',
+      prompt: 'A lantern walk',
+      theme: 'Bedtime',
+      status: 'failed',
+      target_page_count: 1,
+      reading_level: 'Preschool',
+      language: 'en',
+      art_style: 'Dreamy',
+      latest_error_message: 'Quota exceeded.',
+      can_resume_missing_outputs: true,
+      created_at: '2026-03-13T20:00:00Z',
+      updated_at: '2026-03-13T20:02:00Z',
+      pages: [
+        {
+          id: 'page-1',
+          page_number: 1,
+          text_content: 'The lantern glowed softly beneath the moon.',
+          image_prompt: 'A lantern beneath the moon',
+          continuity_notes: 'Keep the lantern warm and golden.',
+          status: 'failed',
+          image_asset_id: 'image-1',
+          audio_asset_id: null,
+          duration_ms: null,
+          retryable_outputs: ['audio'],
+          output_errors: { audio: 'Quota exceeded.' },
+          created_at: '2026-03-13T20:01:00Z',
+          updated_at: '2026-03-13T20:02:00Z',
+        },
+      ],
+    })
+    mockedRetryStoryPageMissingOutputs.mockResolvedValue({
+      id: 'story-1',
+      user_id: 'user-1',
+      child_id: 'child-1',
+      voice_profile_id: 'voice-1',
+      title: 'Broken Story',
+      prompt: 'A lantern walk',
+      theme: 'Bedtime',
+      status: 'generating',
+      target_page_count: 1,
+      reading_level: 'Preschool',
+      language: 'en',
+      art_style: 'Dreamy',
+      latest_error_message: null,
+      can_resume_missing_outputs: false,
+      created_at: '2026-03-13T20:00:00Z',
+      updated_at: '2026-03-13T20:03:00Z',
+      pages: [
+        {
+          id: 'page-1',
+          page_number: 1,
+          text_content: 'The lantern glowed softly beneath the moon.',
+          image_prompt: 'A lantern beneath the moon',
+          continuity_notes: 'Keep the lantern warm and golden.',
+          status: 'image_ready',
+          image_asset_id: 'image-1',
+          audio_asset_id: null,
+          duration_ms: null,
+          retryable_outputs: [],
+          output_errors: {},
+          created_at: '2026-03-13T20:01:00Z',
+          updated_at: '2026-03-13T20:03:00Z',
+        },
+      ],
+    })
+
+    const wrapper = mount(StoryDetailView, {
+      global: {
+        stubs: {
+          RouterLink: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const retryButton = wrapper.findAll('button').find((entry) => entry.text().includes('Retry narration'))
+    await retryButton?.trigger('click')
+    await flushPromises()
+
+    expect(mockedRetryStoryPageMissingOutputs).toHaveBeenCalledWith('story-1', 'page-1')
   })
 })

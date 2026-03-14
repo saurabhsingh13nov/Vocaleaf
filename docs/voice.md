@@ -99,7 +99,7 @@ Recommended meaning of status:
 
 Current implementation status
 
-Phases 7 and 8 currently ship:
+Phases 7 through 11 currently ship:
 	•	voice_profile creation and listing in the authenticated product UI
 	•	required consent capture at voice_profile creation time via `consent_confirmed`
 	•	browser recording via MediaRecorder and direct file upload as two sample-input paths
@@ -113,6 +113,9 @@ Phases 7 and 8 currently ship:
 	•	prefork-safe async worker session handling so clone jobs run correctly under the normal Celery worker pool
 	•	profile-detail polling in the frontend until clone status reaches `ready` or `failed`
 	•	stored `provider_voice_id` values that work for provider-side TTS even when the provider dashboard does not show a preview sample
+	•	per-page narration generation for newly created stories that selected a ready narration voice
+	•	private narration-audio asset storage plus signed-read playback on the story detail screen
+	•	best-effort duration capture from ElevenLabs timestamp metadata without adding a separate media-analysis dependency
 
 Not shipped yet:
 	•	separate `consents` table writes for voice cloning
@@ -120,6 +123,7 @@ Not shipped yet:
 	•	provider-side deletion when a local voice_profile is deleted
 	•	provider preview sample generation for dashboard playback
 	•	raw sample playback/download in the normal user UI
+	•	audio regeneration controls for individual story pages
 
 Upload flow
 
@@ -202,6 +206,12 @@ Each generated page narration should be stored as:
 	•	an assets row for the audio file
 	•	a story_pages.audio_asset_id reference
 	•	optional duration metadata on story_pages.duration_ms
+
+Current v1 narration behavior:
+	•	only stories created with a selected ready `voice_profile_id` enter the narration step
+	•	the image worker hands completed pages to the audio worker
+	•	the audio worker calls ElevenLabs TTS with page text plus adjacent-page context when available
+	•	the provider response supplies audio bytes and timestamp metadata used to derive best-effort duration
 
 Provider abstraction
 

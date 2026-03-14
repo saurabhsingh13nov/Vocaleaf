@@ -289,18 +289,21 @@ Responsibilities:
 	•	create assets rows
 	•	attach image assets to story_pages
 
+Current implementation note:
+	•	the image worker uses Google Gemini image-generation models through the Google GenAI SDK `generate_content()` flow
+
 The system should support rerunning just one page if necessary.
 
 12. Audio worker
 
-This worker creates narration audio and may also create voice clones.
+This worker creates narration audio. Voice cloning remains a separate worker.
 
 Responsibilities:
-	•	create voice clones from approved samples
 	•	synthesize narration using selected voice profile
 	•	generate audio per page
 	•	store audio in object storage
 	•	update page duration and linked audio asset
+	•	finalize narrated stories once all pages are complete
 
 Audio should be page-based for better playback control and cheaper retries.
 

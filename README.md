@@ -12,7 +12,7 @@ The current product direction is a FastAPI backend plus background workers, Post
 
 ## Current Status
 
-This repository is in active development — phases 0 through 9 are complete.
+This repository is in active development — phases 0 through 11 are complete.
 
 - **Phase 0:** Project scaffolding — FastAPI + Vue 3 + Docker Compose
 - **Phase 1:** Database models — 17 ORM models, 12 enums, Alembic migrations
@@ -24,6 +24,8 @@ This repository is in active development — phases 0 through 9 are complete.
 - **Phase 7:** Voice profiles and sample upload — profile creation with consent capture, browser recording/file upload, signed R2 sample uploads, sample/profile deletion, and private sample metadata lifecycle
 - **Phase 8:** Celery + voice cloning worker — Redis-backed job execution, manual clone initiation, official ElevenLabs Python SDK integration boundary, prefork-safe async worker sessions, profile-status polling, and a refreshed mobile-first UI across the current app surfaces
 - **Phase 9:** Story creation + text generation — story create/list/detail APIs, Anthropic integration boundary, Celery text worker, generation polling, and story detail UI with page-level text output
+- **Phase 10:** Story illustration generation — Google Gemini image page-image worker, signed image playback on story detail, and end-to-end story completion after illustrations finish
+- **Phase 11:** Per-page narration audio — ElevenLabs TTS page-audio worker, private audio asset storage, signed audio playback on story detail, and narration-aware story completion
 
 Architecture and schema docs are ahead of feature implementation by design.
 
@@ -36,7 +38,7 @@ Architecture and schema docs are ahead of feature implementation by design.
 - Job system direction: Celery
 - Object storage direction: Cloudflare R2 or another S3-compatible provider
 - Auth: JWT in HTTP-only cookies, Argon2id password hashing
-- AI provider direction: Claude for text, Google Imagen for images, ElevenLabs for voice cloning and TTS
+- AI provider direction: Claude for text, Google Gemini image models for images, ElevenLabs for voice cloning and TTS
 
 ## Repository Layout
 
@@ -68,7 +70,9 @@ Set the provider keys you need in `backend/.env` before using generation flows:
 
 - `ANTHROPIC_API_KEY` for story text generation
 - `GOOGLE_GENAI_API_KEY` for image generation
-- `IMAGEN_MODEL=imagen-4.0-generate-001` unless you intentionally override to another currently supported Gemini API Imagen model
+- `GEMINI_IMAGE_MODEL=gemini-3.1-flash-image-preview` unless you intentionally override to another currently supported Gemini image model
+- `IMAGEN_MODEL` is still accepted as a deprecated alias during migration
+- `ELEVENLABS_API_KEY` for voice cloning and page narration
 
 Restart both the FastAPI server and the Celery worker after changing provider credentials or model settings.
 
@@ -141,6 +145,8 @@ Backend:
 - story creation/list/detail endpoints with owned child/voice validation and latest generation error surfacing
 - failed story soft-delete so broken generation attempts can be removed from the dashboard and detail view
 - Celery-backed text generation worker that calls Anthropic, validates structured page output, stores `story_pages` and `story_page_generations`, and marks text-complete stories as ready for phase 9
+- Celery-backed image generation worker that calls Google Gemini image generation, stores private page-image assets, and keeps stories generating until all illustrations finish
+- Celery-backed audio generation worker that calls ElevenLabs TTS for voice-selected stories, stores private page-audio assets, and records best-effort narration duration metadata
 - 17 ORM models and Alembic migrations for the full domain schema
 - 94 backend tests
 
@@ -151,6 +157,7 @@ Frontend:
 - child profiles management page with create/edit/delete
 - voice profiles page with consent-gated profile creation, in-browser recording, file upload, sample deletion, profile deletion, manual clone trigger, and automatic status polling
 - story creation form, story detail view, generation polling, and dashboard recent-stories surface
+- signed image and narration playback on story detail with generation-aware progress states
 - clearer phase-7 profile status labels in the UI (`Add samples`, `Awaiting clone`) instead of the raw backend `pending` state
 - mobile-first warm editorial refresh across the current auth, dashboard, children, and voice surfaces
 - Pinia stores for auth, children, voice, and story state
@@ -159,8 +166,6 @@ Frontend:
 
 Not yet built:
 
-- image generation workflows (Phase 10)
-- audio/TTS narration workflows (Phase 11)
 - story reader/playback UI (Phase 12)
 - provider-side voice deletion and preview sample generation
 

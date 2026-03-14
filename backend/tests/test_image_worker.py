@@ -15,12 +15,14 @@ from app.models.enums import (
     StoryPageStatus,
     StoryStatus,
     UserStatus,
+    VoiceProfileStatus,
 )
 from app.models.story import Story
 from app.models.story_generation_job import StoryGenerationJob
 from app.models.story_page import StoryPage
 from app.models.story_page_generation import StoryPageGeneration
 from app.models.asset import Asset
+from app.models.voice_profile import VoiceProfile
 from app.workers.image_worker import run_image_generation_in_session
 
 
@@ -30,7 +32,7 @@ class FakeR2ObjectMetadata:
     checksum: str | None
 
 
-class FakeGoogleImagenClient:
+class FakeGoogleGeminiImageClient:
     def __init__(self, output):
         self.output = output
         self.calls: list[dict] = []
@@ -77,7 +79,7 @@ async def _setup_story_with_pages(db_session, *, page_count=2, page_status=Story
         job_type="full_generation",
         status=JobStatus.RUNNING,
         provider_text="anthropic",
-        provider_image="google_imagen",
+        provider_image="google_gemini_image",
     )
     pages = []
     for i in range(1, page_count + 1):
@@ -97,16 +99,38 @@ async def _setup_story_with_pages(db_session, *, page_count=2, page_status=Story
     return story, job, pages
 
 
+async def _setup_narrated_story_with_pages(db_session, *, page_count=1):
+    story, job, pages = await _setup_story_with_pages(db_session, page_count=page_count)
+    voice_profile = VoiceProfile(
+        id=uuid.uuid4(),
+        user_id=story.user_id,
+        display_name="Bedtime Voice",
+        provider="elevenlabs",
+        provider_voice_id="voice_123",
+        clone_type="instant",
+        status=VoiceProfileStatus.READY,
+        source_type="user_upload",
+        consent_confirmed=True,
+    )
+    story.voice_profile = voice_profile
+    db_session.add(voice_profile)
+    await db_session.commit()
+    return story, job, pages, voice_profile
+
+
 async def test_image_generation_success(db_session, monkeypatch):
-    from app.integrations.google_imagen import GeneratedImage
+    from app.integrations.google_gemini_image import GeneratedImage
 
     story, job, pages = await _setup_story_with_pages(db_session, page_count=1)
 
     fake_image = GeneratedImage(content=b"\x89PNG_FAKE_IMAGE_DATA", mime_type="image/png")
-    fake_imagen = FakeGoogleImagenClient(fake_image)
+    fake_imagen = FakeGoogleGeminiImageClient(fake_image)
     fake_r2 = FakeR2Client()
 
-    monkeypatch.setattr("app.workers.image_worker.get_google_imagen_client", lambda: fake_imagen)
+    monkeypatch.setattr(
+        "app.workers.image_worker.get_google_gemini_image_client",
+        lambda: fake_imagen,
+    )
     monkeypatch.setattr("app.workers.image_worker.get_r2_client", lambda: fake_r2)
 
     await run_image_generation_in_session(
@@ -145,14 +169,15 @@ async def test_image_generation_success(db_session, monkeypatch):
             .where(StoryPageGeneration.generation_type == GenerationType.IMAGE)
         )
     ).scalar_one()
-    assert gen.provider == "google_imagen"
+    assert gen.provider == "google_gemini_image"
     assert gen.status == JobStatus.COMPLETED
 
     # Verify R2 upload
     assert len(fake_r2.uploads) == 1
     assert fake_r2.uploads[0]["content_type"] == "image/png"
+    assert fake_r2.uploads[0]["object_key"].endswith(".png")
 
-    # Verify Imagen client was called with correct params
+    # Verify Gemini image client was called with correct params
     assert len(fake_imagen.calls) == 1
     assert fake_imagen.calls[0]["art_style"] == "Dreamy watercolor"
 
@@ -176,12 +201,17 @@ async def test_image_generation_success(db_session, monkeypatch):
 
 
 async def test_image_generation_api_error_marks_page_failed(db_session, monkeypatch):
-    from app.integrations.google_imagen import GoogleImagenError
+    from app.integrations.google_gemini_image import GoogleGeminiImageError
 
     story, job, pages = await _setup_story_with_pages(db_session, page_count=1)
 
-    fake_imagen = FakeGoogleImagenClient(GoogleImagenError("Imagen request failed"))
-    monkeypatch.setattr("app.workers.image_worker.get_google_imagen_client", lambda: fake_imagen)
+    fake_imagen = FakeGoogleGeminiImageClient(
+        GoogleGeminiImageError("Gemini image generation request failed")
+    )
+    monkeypatch.setattr(
+        "app.workers.image_worker.get_google_gemini_image_client",
+        lambda: fake_imagen,
+    )
 
     await run_image_generation_in_session(
         db_session,
@@ -215,18 +245,21 @@ async def test_image_generation_api_error_marks_page_failed(db_session, monkeypa
             .execution_options(populate_existing=True)
         )
     ).scalar_one()
-    assert refreshed_job.error_message == "Imagen request failed"
+    assert refreshed_job.error_message == "Gemini image generation request failed"
     assert refreshed_job.status == JobStatus.FAILED
     assert refreshed_job.completed_at is not None
 
 
 async def test_image_generation_missing_page_is_graceful(db_session, monkeypatch):
-    from app.integrations.google_imagen import GeneratedImage
+    from app.integrations.google_gemini_image import GeneratedImage
 
-    fake_imagen = FakeGoogleImagenClient(
+    fake_imagen = FakeGoogleGeminiImageClient(
         GeneratedImage(content=b"unused", mime_type="image/png")
     )
-    monkeypatch.setattr("app.workers.image_worker.get_google_imagen_client", lambda: fake_imagen)
+    monkeypatch.setattr(
+        "app.workers.image_worker.get_google_gemini_image_client",
+        lambda: fake_imagen,
+    )
 
     await run_image_generation_in_session(
         db_session,
@@ -238,16 +271,19 @@ async def test_image_generation_missing_page_is_graceful(db_session, monkeypatch
 
 
 async def test_image_generation_skips_non_text_ready_page(db_session, monkeypatch):
-    from app.integrations.google_imagen import GeneratedImage
+    from app.integrations.google_gemini_image import GeneratedImage
 
     story, job, pages = await _setup_story_with_pages(
         db_session, page_count=1, page_status=StoryPageStatus.IMAGE_READY
     )
 
-    fake_imagen = FakeGoogleImagenClient(
+    fake_imagen = FakeGoogleGeminiImageClient(
         GeneratedImage(content=b"unused", mime_type="image/png")
     )
-    monkeypatch.setattr("app.workers.image_worker.get_google_imagen_client", lambda: fake_imagen)
+    monkeypatch.setattr(
+        "app.workers.image_worker.get_google_gemini_image_client",
+        lambda: fake_imagen,
+    )
 
     await run_image_generation_in_session(
         db_session,
@@ -259,15 +295,18 @@ async def test_image_generation_skips_non_text_ready_page(db_session, monkeypatc
 
 
 async def test_story_stays_generating_when_not_all_pages_done(db_session, monkeypatch):
-    from app.integrations.google_imagen import GeneratedImage
+    from app.integrations.google_gemini_image import GeneratedImage
 
     story, job, pages = await _setup_story_with_pages(db_session, page_count=2)
 
     fake_image = GeneratedImage(content=b"\x89PNG_FAKE", mime_type="image/png")
-    fake_imagen = FakeGoogleImagenClient(fake_image)
+    fake_imagen = FakeGoogleGeminiImageClient(fake_image)
     fake_r2 = FakeR2Client()
 
-    monkeypatch.setattr("app.workers.image_worker.get_google_imagen_client", lambda: fake_imagen)
+    monkeypatch.setattr(
+        "app.workers.image_worker.get_google_gemini_image_client",
+        lambda: fake_imagen,
+    )
     monkeypatch.setattr("app.workers.image_worker.get_r2_client", lambda: fake_r2)
 
     # Generate image for first page only
@@ -286,3 +325,82 @@ async def test_story_stays_generating_when_not_all_pages_done(db_session, monkey
     ).scalar_one()
     # Story should still be GENERATING since page 2 is still TEXT_READY
     assert refreshed_story.status == StoryStatus.GENERATING
+
+
+async def test_image_generation_uses_mime_extension_for_storage_key(db_session, monkeypatch):
+    from app.integrations.google_gemini_image import GeneratedImage
+
+    _story, job, pages = await _setup_story_with_pages(db_session, page_count=1)
+
+    fake_image = GeneratedImage(content=b"JPEG_FAKE", mime_type="image/jpeg")
+    fake_imagen = FakeGoogleGeminiImageClient(fake_image)
+    fake_r2 = FakeR2Client()
+
+    monkeypatch.setattr(
+        "app.workers.image_worker.get_google_gemini_image_client",
+        lambda: fake_imagen,
+    )
+    monkeypatch.setattr("app.workers.image_worker.get_r2_client", lambda: fake_r2)
+
+    await run_image_generation_in_session(
+        db_session,
+        story_page_id=pages[0].id,
+        job_id=job.id,
+    )
+
+    assert fake_r2.uploads[0]["content_type"] == "image/jpeg"
+    assert fake_r2.uploads[0]["object_key"].endswith(".jpg")
+
+
+async def test_image_generation_enqueues_audio_for_narrated_story(db_session, monkeypatch):
+    from app.integrations.google_gemini_image import GeneratedImage
+
+    story, job, pages, _voice_profile = await _setup_narrated_story_with_pages(db_session, page_count=1)
+
+    fake_image = GeneratedImage(content=b"\x89PNG_FAKE_IMAGE_DATA", mime_type="image/png")
+    fake_imagen = FakeGoogleGeminiImageClient(fake_image)
+    fake_r2 = FakeR2Client()
+    audio_task_calls: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(
+        "app.workers.image_worker.get_google_gemini_image_client",
+        lambda: fake_imagen,
+    )
+    monkeypatch.setattr("app.workers.image_worker.get_r2_client", lambda: fake_r2)
+    monkeypatch.setattr(
+        "app.workers.audio_worker.generate_page_audio_task.delay",
+        lambda page_id, job_id: audio_task_calls.append((page_id, job_id)),
+    )
+
+    await run_image_generation_in_session(
+        db_session,
+        story_page_id=pages[0].id,
+        job_id=job.id,
+    )
+
+    refreshed_page = (
+        await db_session.execute(
+            select(StoryPage)
+            .where(StoryPage.id == pages[0].id)
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one()
+    refreshed_story = (
+        await db_session.execute(
+            select(Story)
+            .where(Story.id == story.id)
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one()
+    refreshed_job = (
+        await db_session.execute(
+            select(StoryGenerationJob)
+            .where(StoryGenerationJob.id == job.id)
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one()
+
+    assert refreshed_page.status == StoryPageStatus.IMAGE_READY
+    assert refreshed_story.status == StoryStatus.GENERATING
+    assert refreshed_job.status == JobStatus.RUNNING
+    assert audio_task_calls == [(str(pages[0].id), str(job.id))]

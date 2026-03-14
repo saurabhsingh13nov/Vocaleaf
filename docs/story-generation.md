@@ -138,10 +138,14 @@ Recommended story status usage:
 	•	failed = the workflow failed and needs retry or intervention
 	•	deleted = no longer active
 
-Current implementation note for phase 9:
-	•	text generation is the only required output today, so stories transition to ready when text generation completes successfully
-	•	story_pages remain at text_ready until later image/audio phases are implemented
+Current implementation note for phase 11:
+	•	text generation creates `text_ready` pages, then image generation upgrades pages to `image_ready`
+	•	if a story was created without a selected narration voice, image completion is enough for the story to transition to `ready`
+	•	if a story was created with a selected ready narration voice, image generation hands each page to the audio worker and the story stays `generating` until all pages reach `complete`
+	•	audio generation stores private page audio assets, links `story_pages.audio_asset_id`, and records best-effort `duration_ms`
 	•	stories in user-visible states can be soft-deleted through the API, including while generation is running, while generation-job records remain for debugging
+	•	failed image and audio attempts now persist `story_page_generations` rows with provider/debug payloads so the product can show page-specific retry context
+	•	the stories API exposes story-level and page-level retry actions for missing outputs; retries preserve successful page assets and enqueue only the failed or missing modality
 
 Recommended page status usage:
 	•	pending = page exists but generation has not produced usable output yet
@@ -177,6 +181,7 @@ Each page illustration should:
 	•	produce a private asset in object storage
 	•	create or update an assets row
 	•	set story_pages.image_asset_id when ready
+	•	use Gemini image-generation models through the Google GenAI SDK `generate_content()` flow
 
 Prompt inputs should use:
 	•	the page text
@@ -191,7 +196,7 @@ Each page narration should:
 	•	use the selected ready voice_profile if narration is enabled
 	•	produce a private audio asset in object storage
 	•	set story_pages.audio_asset_id when ready
-	•	optionally update story_pages.duration_ms
+	•	optionally update story_pages.duration_ms from provider timestamp metadata
 
 Do not limit narration to one full-story output file.
 

@@ -24,7 +24,7 @@ const localError = ref<string | null>(null)
 const themeOptions = ['Adventure', 'Bedtime', 'Friendship', 'Animals', 'Space', 'Fantasy', 'Nature', 'Ocean']
 const artStyleOptions = ['Watercolor', 'Storybook Classic', 'Modern Illustration', 'Whimsical', 'Dreamy']
 const readingLevelOptions = ['Preschool', 'Early Reader', 'Independent Reader']
-const pageCountOptions = Array.from({ length: 9 }, (_, index) => index + 4)
+const pageCountOptions = Array.from({ length: 9 }, (_, index) => index + 2)
 
 const readyVoiceProfiles = computed(() =>
   voiceStore.profiles.filter((profile) => profile.status === 'ready'),

@@ -223,7 +223,7 @@ async def run_text_generation_in_session(
 
     story.title = output.title
     story.status = StoryStatus.GENERATING
-    job.provider_image = "google_imagen"
+    job.provider_image = "google_gemini_image"
     job.error_message = None
     await db.commit()
 

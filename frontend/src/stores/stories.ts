@@ -8,6 +8,8 @@ import {
   getAssetUrl,
   getStory as getStoryRequest,
   getStories as getStoriesRequest,
+  retryStoryMissingOutputs as retryStoryMissingOutputsRequest,
+  retryStoryPageMissingOutputs as retryStoryPageMissingOutputsRequest,
   type CreateStoryPayload,
   type Story,
   type StoryListItem,
@@ -54,6 +56,7 @@ export const useStoriesStore = defineStore('stories', () => {
   const generatingStoryIds = ref<string[]>([])
   const pollingTimers = new Map<string, number>()
   const imageUrls = ref<Record<string, string>>({})
+  const audioUrls = ref<Record<string, string>>({})
 
   function mergeStoryListItem(story: StoryListItem) {
     const index = stories.value.findIndex((entry) => entry.id === story.id)
@@ -69,19 +72,26 @@ export const useStoriesStore = defineStore('stories', () => {
   function mergeStoryDetail(story: Story) {
     currentStory.value = story
     mergeStoryListItem(toListItem(story))
-    fetchMissingImageUrls(story)
+    fetchMissingAssetUrls(story)
   }
 
-  function fetchMissingImageUrls(story: Story) {
+  function fetchAssetUrl(assetId: string, target: typeof imageUrls) {
+    getAssetUrl(assetId)
+      .then((resp) => {
+        target.value = { ...target.value, [assetId]: resp.url }
+      })
+      .catch(() => {
+        // Signed URL fetch failed — will retry on next poll or reload.
+      })
+  }
+
+  function fetchMissingAssetUrls(story: Story) {
     for (const page of story.pages) {
       if (page.image_asset_id && !imageUrls.value[page.image_asset_id]) {
-        getAssetUrl(page.image_asset_id)
-          .then((resp) => {
-            imageUrls.value = { ...imageUrls.value, [page.image_asset_id!]: resp.url }
-          })
-          .catch(() => {
-            // Signed URL fetch failed — will retry on next poll
-          })
+        fetchAssetUrl(page.image_asset_id, imageUrls)
+      }
+      if (page.audio_asset_id && !audioUrls.value[page.audio_asset_id]) {
+        fetchAssetUrl(page.audio_asset_id, audioUrls)
       }
     }
   }
@@ -174,6 +184,44 @@ export const useStoriesStore = defineStore('stories', () => {
     }
   }
 
+  async function retryStoryMissingOutputs(storyId: string) {
+    isLoading.value = true
+    error.value = null
+
+    try {
+      const story = await retryStoryMissingOutputsRequest(storyId)
+      mergeStoryDetail(story)
+      if (story.status === 'generating') {
+        scheduleGenerationPoll(story.id)
+      }
+      return story
+    } catch (e) {
+      error.value = getErrorMessage(e)
+      throw e
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  async function retryStoryPageMissingOutputs(storyId: string, pageId: string) {
+    isLoading.value = true
+    error.value = null
+
+    try {
+      const story = await retryStoryPageMissingOutputsRequest(storyId, pageId)
+      mergeStoryDetail(story)
+      if (story.status === 'generating') {
+        scheduleGenerationPoll(story.id)
+      }
+      return story
+    } catch (e) {
+      error.value = getErrorMessage(e)
+      throw e
+    } finally {
+      isLoading.value = false
+    }
+  }
+
   function scheduleGenerationPoll(storyId: string) {
     stopGenerationPolling(storyId)
     if (!generatingStoryIds.value.includes(storyId)) {
@@ -221,6 +269,7 @@ export const useStoriesStore = defineStore('stories', () => {
     createStory,
     currentStory,
     deleteStory,
+    audioUrls,
     error,
     fetchStories,
     fetchStory,
@@ -229,6 +278,8 @@ export const useStoriesStore = defineStore('stories', () => {
     imageUrls,
     isGeneratingStory,
     isLoading,
+    retryStoryMissingOutputs,
+    retryStoryPageMissingOutputs,
     stories,
     stopAllPolling,
     stopGenerationPolling,

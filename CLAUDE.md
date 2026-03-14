@@ -14,7 +14,7 @@ Vocaleaf is a personalized children's storybook web app with AI-generated text, 
 - **Queue/Cache:** Celery + Redis 7
 - **Auth:** JWT in HTTP-only cookies (access 15min + refresh 7d), Argon2id for passwords
 - **Object storage:** Cloudflare R2 (S3-compatible, via boto3) — private buckets only
-- **AI providers:** Claude (text), Google Imagen (images), ElevenLabs (voice cloning + TTS)
+- **AI providers:** Claude (text), Google Gemini image models (images), ElevenLabs (voice cloning + TTS)
 - **Production DB:** Supabase (managed Postgres)
 
 ## Local Development

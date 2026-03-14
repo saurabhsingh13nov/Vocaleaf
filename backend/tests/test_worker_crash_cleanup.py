@@ -7,6 +7,12 @@ import uuid
 import pytest
 
 
+def test_audio_worker_task_is_registered() -> None:
+    from app.tasks.celery_app import celery_app
+
+    assert "app.workers.audio_worker.generate_page_audio_task" in celery_app.tasks
+
+
 def test_generate_story_text_task_disposes_session_state_before_cleanup(monkeypatch) -> None:
     from app.workers import text_worker
 
@@ -109,3 +115,39 @@ def test_clone_voice_profile_task_disposes_session_state_before_cleanup(monkeypa
         voice_clone_worker.clone_voice_profile_task(profile_id)
 
     assert calls == ["dispose", "cleanup"]
+
+
+def test_generate_page_audio_task_disposes_session_state_before_cleanup(monkeypatch) -> None:
+    from app.workers import audio_worker
+
+    page_id = str(uuid.uuid4())
+    job_id = str(uuid.uuid4())
+    calls: list[tuple[str, str]] = []
+
+    async def fake_run_audio_generation(*args, **kwargs) -> None:
+        raise RuntimeError("audio boom")
+
+    async def fake_mark_audio_generation_failed(page_uuid, job_uuid, *, error_message: str) -> None:
+        calls.append(("cleanup", error_message))
+
+    def fake_dispose() -> None:
+        calls.append(("dispose", ""))
+
+    def fake_asyncio_run(coro):
+        try:
+            return coro.send(None)
+        except StopIteration as exc:
+            return exc.value
+
+    monkeypatch.setattr(audio_worker, "run_audio_generation", fake_run_audio_generation)
+    monkeypatch.setattr(audio_worker, "mark_audio_generation_failed", fake_mark_audio_generation_failed)
+    monkeypatch.setattr(audio_worker, "dispose_session_state_sync", fake_dispose)
+    monkeypatch.setattr(audio_worker.asyncio, "run", fake_asyncio_run)
+
+    with pytest.raises(RuntimeError, match="audio boom"):
+        audio_worker.generate_page_audio_task(page_id, job_id)
+
+    assert calls == [
+        ("dispose", ""),
+        ("cleanup", "audio boom"),
+    ]

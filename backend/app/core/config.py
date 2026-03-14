@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     # ElevenLabs
     elevenlabs_api_key: str = ""
     elevenlabs_base_url: str = "https://api.elevenlabs.io"
+    elevenlabs_tts_model: str = "eleven_multilingual_v2"
 
     # Anthropic / Claude
     anthropic_api_key: str = ""
@@ -29,9 +30,10 @@ class Settings(BaseSettings):
     # Google OAuth
     google_client_id: str = ""
 
-    # Google Imagen (via Gemini API)
+    # Google Gemini image generation
     google_genai_api_key: str = ""
-    imagen_model: str = "imagen-4.0-generate-001"
+    gemini_image_model: str | None = None
+    imagen_model: str | None = None
 
     # Cloudflare R2 / S3-compatible object storage
     r2_endpoint_url: str = ""
@@ -47,6 +49,14 @@ class Settings(BaseSettings):
     jwt_secret_key: str = "change-me-in-production"
     jwt_access_token_expire_minutes: int = 15
     jwt_refresh_token_expire_days: int = 7
+
+    @property
+    def resolved_gemini_image_model(self) -> str:
+        return (
+            self.gemini_image_model
+            or self.imagen_model
+            or "gemini-3.1-flash-image-preview"
+        )
 
 
 settings = Settings()

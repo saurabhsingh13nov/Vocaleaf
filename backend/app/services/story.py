@@ -10,9 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.child import Child
-from app.models.enums import JobStatus, StoryStatus, VoiceProfileStatus
+from app.models.enums import GenerationType, JobStatus, StoryPageStatus, StoryStatus, VoiceProfileStatus
 from app.models.story import Story
 from app.models.story_generation_job import StoryGenerationJob
+from app.models.story_page import StoryPage
 from app.models.voice_profile import VoiceProfile
 from app.schemas.story import StoryCreate
 
@@ -26,7 +27,7 @@ class StoryError(Exception):
 
 def _story_detail_load():
     return (
-        selectinload(Story.pages),
+        selectinload(Story.pages).selectinload(StoryPage.page_generations),
         selectinload(Story.generation_jobs),
     )
 
@@ -93,7 +94,7 @@ async def create_story(
         reading_level=data.reading_level.strip() if data.reading_level else None,
         language=data.language.strip().lower(),
         art_style=data.art_style.strip() if data.art_style else None,
-        generation_version="phase-9-text-v1",
+        generation_version="phase-11-audio-v1",
     )
     db.add(story)
     await db.flush()
@@ -156,6 +157,164 @@ async def get_story(
         .options(*_story_detail_load())
     )
     return result.scalar_one_or_none()
+
+
+def _story_requires_narration(story: Story) -> bool:
+    return story.voice_profile_id is not None
+
+
+def _page_retryable_outputs(story: Story, page: StoryPage) -> list[GenerationType]:
+    outputs: list[GenerationType] = []
+    failed_story = story.status == StoryStatus.FAILED
+    failed_page = page.status == StoryPageStatus.FAILED
+
+    if (
+        page.image_asset_id is None
+        and page.text_content is not None
+        and (failed_story or failed_page)
+    ):
+        outputs.append(GenerationType.IMAGE)
+
+    if (
+        _story_requires_narration(story)
+        and page.image_asset_id is not None
+        and page.audio_asset_id is None
+        and (failed_story or failed_page)
+    ):
+        outputs.append(GenerationType.AUDIO)
+
+    return outputs
+
+
+async def _create_retry_job(
+    db: AsyncSession,
+    *,
+    story: Story,
+    job_type: str,
+    outputs: set[GenerationType],
+) -> StoryGenerationJob:
+    job = StoryGenerationJob(
+        story_id=story.id,
+        job_type=job_type,
+        status=JobStatus.PENDING,
+        provider_image="google_gemini_image" if GenerationType.IMAGE in outputs else None,
+        provider_audio="elevenlabs" if GenerationType.AUDIO in outputs else None,
+    )
+    db.add(job)
+    await db.flush()
+    return job
+
+
+async def _load_story_page(
+    db: AsyncSession,
+    *,
+    story_id: uuid.UUID,
+    page_id: uuid.UUID,
+) -> StoryPage | None:
+    result = await db.execute(
+        select(StoryPage)
+        .where(StoryPage.id == page_id, StoryPage.story_id == story_id)
+        .options(selectinload(StoryPage.page_generations))
+    )
+    return result.scalar_one_or_none()
+
+
+async def _enqueue_retry_tasks(
+    *,
+    page_outputs: list[tuple[StoryPage, list[GenerationType]]],
+    job_id: uuid.UUID,
+) -> None:
+    from app.workers.audio_worker import generate_page_audio_task
+    from app.workers.image_worker import generate_page_image_task
+
+    for page, outputs in page_outputs:
+        if GenerationType.IMAGE in outputs:
+            generate_page_image_task.delay(str(page.id), str(job_id))
+        elif GenerationType.AUDIO in outputs:
+            generate_page_audio_task.delay(str(page.id), str(job_id))
+
+
+async def retry_story_missing_outputs(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    story_id: uuid.UUID,
+) -> Story:
+    story = await get_story(db, user_id=user_id, story_id=story_id)
+    if story is None:
+        raise StoryError("Story not found", status_code=404)
+
+    page_outputs = [
+        (page, _page_retryable_outputs(story, page))
+        for page in sorted(list(story.pages), key=lambda entry: entry.page_number)
+    ]
+    page_outputs = [(page, outputs) for page, outputs in page_outputs if outputs]
+    if not page_outputs:
+        raise StoryError("There are no missing outputs to retry for this story", status_code=400)
+
+    outputs = {output for _page, retryable in page_outputs for output in retryable}
+    job = await _create_retry_job(
+        db,
+        story=story,
+        job_type="retry_missing_outputs",
+        outputs=outputs,
+    )
+
+    story.status = StoryStatus.GENERATING
+    for page, retryable in page_outputs:
+        if GenerationType.IMAGE in retryable:
+            page.status = StoryPageStatus.TEXT_READY
+        elif GenerationType.AUDIO in retryable:
+            page.status = StoryPageStatus.IMAGE_READY
+
+    await db.commit()
+    await _enqueue_retry_tasks(page_outputs=page_outputs, job_id=job.id)
+
+    refreshed_story = await get_story(db, user_id=user_id, story_id=story_id)
+    if refreshed_story is None:
+        raise StoryError("Story not found", status_code=404)
+    return refreshed_story
+
+
+async def retry_story_page_missing_outputs(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    story_id: uuid.UUID,
+    page_id: uuid.UUID,
+) -> Story:
+    story = await get_story(db, user_id=user_id, story_id=story_id)
+    if story is None:
+        raise StoryError("Story not found", status_code=404)
+
+    page = await _load_story_page(db, story_id=story.id, page_id=page_id)
+    if page is None:
+        raise StoryError("Story page not found", status_code=404)
+
+    retryable = _page_retryable_outputs(story, page)
+    if not retryable:
+        raise StoryError("There are no missing outputs to retry for this page", status_code=400)
+
+    job = await _create_retry_job(
+        db,
+        story=story,
+        job_type="page_retry",
+        outputs=set(retryable),
+    )
+
+    story.status = StoryStatus.GENERATING
+    if GenerationType.IMAGE in retryable:
+        page.status = StoryPageStatus.TEXT_READY
+    elif GenerationType.AUDIO in retryable:
+        page.status = StoryPageStatus.IMAGE_READY
+
+    await db.commit()
+    await _enqueue_retry_tasks(page_outputs=[(page, retryable)], job_id=job.id)
+
+    refreshed_story = await get_story(db, user_id=user_id, story_id=story_id)
+    if refreshed_story is None:
+        raise StoryError("Story not found", status_code=404)
+    return refreshed_story
 
 
 async def delete_story(

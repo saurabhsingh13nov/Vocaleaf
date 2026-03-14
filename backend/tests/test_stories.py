@@ -8,8 +8,11 @@ from sqlalchemy import select
 
 from app.db.session import get_db
 from app.main import app as fastapi_app
+from app.models.asset import Asset
 from app.models.child import Child
 from app.models.enums import (
+    AssetType,
+    AssetUploadStatus,
     GenerationType,
     JobStatus,
     StoryPageStatus,
@@ -148,6 +151,36 @@ async def test_create_story_requires_prompt_or_theme(client: AsyncClient, monkey
 
     assert response.status_code == 400
     assert "prompt or theme" in response.json()["detail"].lower()
+
+
+async def test_create_story_validates_page_count_bounds(client: AsyncClient, monkeypatch):
+    monkeypatch.setattr(
+        "app.workers.text_worker.generate_story_text_task.delay",
+        lambda story_id, job_id: None,
+    )
+
+    await register_and_get_client(client)
+    child = await create_child(client, name="Luna")
+
+    too_small = await client.post(
+        STORIES_URL,
+        json={
+            "child_id": child["id"],
+            "prompt": "A mountain picnic",
+            "target_page_count": 1,
+        },
+    )
+    assert too_small.status_code == 422
+
+    too_large = await client.post(
+        STORIES_URL,
+        json={
+            "child_id": child["id"],
+            "prompt": "A mountain picnic",
+            "target_page_count": 11,
+        },
+    )
+    assert too_large.status_code == 422
 
 
 async def test_create_story_rejects_other_users_child(client: AsyncClient, db_session, monkeypatch):
@@ -400,6 +433,273 @@ async def test_delete_generating_story_success(client: AsyncClient, db_session):
     assert detail_response.status_code == 404
 
 
+async def test_story_detail_includes_retry_metadata_for_failed_outputs(client: AsyncClient, db_session):
+    await register_and_get_client(client)
+    user = await get_user_by_email(db_session, "story-user@example.com")
+    child = Child(user_id=user.id, name="Luna", age=5)
+    voice_profile = VoiceProfile(
+        user_id=user.id,
+        display_name="Story Voice",
+        status=VoiceProfileStatus.READY,
+        consent_confirmed=True,
+        source_type="user_upload",
+        provider="elevenlabs",
+        provider_voice_id="voice_123",
+    )
+    story = Story(
+        user_id=user.id,
+        child=child,
+        voice_profile=voice_profile,
+        title="Broken Story",
+        prompt="A quiet night",
+        status=StoryStatus.FAILED,
+        target_page_count=2,
+        language="en",
+    )
+    job = StoryGenerationJob(
+        story=story,
+        job_type="full_generation",
+        status=JobStatus.FAILED,
+        provider_text="anthropic",
+        provider_image="google_gemini_image",
+        provider_audio="elevenlabs",
+        error_message="Generation failed",
+    )
+    page = StoryPage(
+        story=story,
+        page_number=1,
+        text_content="The lantern glowed softly.",
+        image_prompt="A glowing lantern by a forest path",
+        continuity_notes="Keep the fox scarf visible.",
+        status=StoryPageStatus.FAILED,
+    )
+    image_generation = StoryPageGeneration(
+        story_page=page,
+        generation_job=job,
+        generation_type=GenerationType.IMAGE,
+        provider="google_gemini_image",
+        status=JobStatus.FAILED,
+        response_payload_json={"error_message": "Gemini image generation returned no images."},
+    )
+    db_session.add_all([user, child, voice_profile, story, job, page, image_generation])
+    await db_session.commit()
+
+    response = await client.get(f"{STORIES_URL}/{story.id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["can_resume_missing_outputs"] is True
+    assert body["pages"][0]["retryable_outputs"] == ["image"]
+    assert body["pages"][0]["output_errors"] == {"image": "Gemini image generation returned no images."}
+
+
+async def test_retry_story_missing_outputs_enqueues_only_missing_work(client: AsyncClient, db_session, monkeypatch):
+    image_task_calls: list[tuple[str, str]] = []
+    audio_task_calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        "app.workers.image_worker.generate_page_image_task.delay",
+        lambda page_id, job_id: image_task_calls.append((page_id, job_id)),
+    )
+    monkeypatch.setattr(
+        "app.workers.audio_worker.generate_page_audio_task.delay",
+        lambda page_id, job_id: audio_task_calls.append((page_id, job_id)),
+    )
+
+    await register_and_get_client(client)
+    user = await get_user_by_email(db_session, "story-user@example.com")
+    child = Child(user_id=user.id, name="Luna", age=5)
+    voice_profile = VoiceProfile(
+        user_id=user.id,
+        display_name="Story Voice",
+        status=VoiceProfileStatus.READY,
+        consent_confirmed=True,
+        source_type="user_upload",
+        provider="elevenlabs",
+        provider_voice_id="voice_123",
+    )
+    story = Story(
+        user_id=user.id,
+        child=child,
+        voice_profile=voice_profile,
+        title="Broken Story",
+        prompt="A quiet night",
+        status=StoryStatus.FAILED,
+        target_page_count=2,
+        language="en",
+    )
+    original_job = StoryGenerationJob(
+        story=story,
+        job_type="full_generation",
+        status=JobStatus.FAILED,
+        provider_text="anthropic",
+        provider_image="google_gemini_image",
+        provider_audio="elevenlabs",
+        error_message="Generation failed",
+    )
+    image_asset = Asset(
+        user_id=user.id,
+        storage_provider="r2",
+        bucket_name="storybook",
+        object_key=f"stories/{user.id}/existing-page-2.png",
+        asset_type=AssetType.PAGE_IMAGE,
+        mime_type="image/png",
+        file_size_bytes=2048,
+        checksum="existing-page-2",
+        is_private=True,
+        upload_status=AssetUploadStatus.READY,
+    )
+    image_failed_page = StoryPage(
+        story=story,
+        page_number=1,
+        text_content="The lantern glowed softly.",
+        image_prompt="A glowing lantern by a forest path",
+        continuity_notes="Keep the fox scarf visible.",
+        status=StoryPageStatus.FAILED,
+    )
+    audio_failed_page = StoryPage(
+        story=story,
+        page_number=2,
+        text_content="The owl listened to the wind.",
+        image_prompt="A sleepy owl beside a silver pond",
+        continuity_notes="Keep the silver pond visible.",
+        status=StoryPageStatus.FAILED,
+        image_asset=image_asset,
+    )
+    db_session.add_all([user, child, voice_profile, story, original_job, image_asset, image_failed_page, audio_failed_page])
+    await db_session.commit()
+
+    response = await client.post(f"{STORIES_URL}/{story.id}/retry-missing")
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["status"] == "generating"
+    assert body["can_resume_missing_outputs"] is False
+    assert len(image_task_calls) == 1
+    assert len(audio_task_calls) == 1
+    assert image_task_calls[0][0] == str(image_failed_page.id)
+    assert audio_task_calls[0][0] == str(audio_failed_page.id)
+    assert image_task_calls[0][1] == audio_task_calls[0][1]
+
+    refreshed_story = await get_story(db_session, str(story.id))
+    retry_jobs = (
+        await db_session.execute(
+            select(StoryGenerationJob)
+            .where(StoryGenerationJob.story_id == story.id)
+            .order_by(StoryGenerationJob.created_at.asc())
+        )
+    ).scalars().all()
+    assert refreshed_story.status == StoryStatus.GENERATING
+    assert len(retry_jobs) == 2
+    assert retry_jobs[-1].job_type == "retry_missing_outputs"
+    assert retry_jobs[-1].provider_image == "google_gemini_image"
+    assert retry_jobs[-1].provider_audio == "elevenlabs"
+
+    refreshed_pages = (
+        await db_session.execute(
+            select(StoryPage)
+            .where(StoryPage.story_id == story.id)
+            .order_by(StoryPage.page_number.asc())
+        )
+    ).scalars().all()
+    assert refreshed_pages[0].status == StoryPageStatus.TEXT_READY
+    assert refreshed_pages[1].status == StoryPageStatus.IMAGE_READY
+
+
+async def test_retry_story_page_missing_outputs_only_affects_selected_page(client: AsyncClient, db_session, monkeypatch):
+    image_task_calls: list[tuple[str, str]] = []
+    audio_task_calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        "app.workers.image_worker.generate_page_image_task.delay",
+        lambda page_id, job_id: image_task_calls.append((page_id, job_id)),
+    )
+    monkeypatch.setattr(
+        "app.workers.audio_worker.generate_page_audio_task.delay",
+        lambda page_id, job_id: audio_task_calls.append((page_id, job_id)),
+    )
+
+    await register_and_get_client(client)
+    user = await get_user_by_email(db_session, "story-user@example.com")
+    child = Child(user_id=user.id, name="Luna", age=5)
+    voice_profile = VoiceProfile(
+        user_id=user.id,
+        display_name="Story Voice",
+        status=VoiceProfileStatus.READY,
+        consent_confirmed=True,
+        source_type="user_upload",
+        provider="elevenlabs",
+        provider_voice_id="voice_123",
+    )
+    story = Story(
+        user_id=user.id,
+        child=child,
+        voice_profile=voice_profile,
+        title="Broken Story",
+        prompt="A quiet night",
+        status=StoryStatus.FAILED,
+        target_page_count=2,
+        language="en",
+    )
+    original_job = StoryGenerationJob(
+        story=story,
+        job_type="full_generation",
+        status=JobStatus.FAILED,
+        provider_text="anthropic",
+        provider_image="google_gemini_image",
+        provider_audio="elevenlabs",
+        error_message="Generation failed",
+    )
+    image_asset = Asset(
+        user_id=user.id,
+        storage_provider="r2",
+        bucket_name="storybook",
+        object_key=f"stories/{user.id}/existing-page-1.png",
+        asset_type=AssetType.PAGE_IMAGE,
+        mime_type="image/png",
+        file_size_bytes=2048,
+        checksum="existing-page-1",
+        is_private=True,
+        upload_status=AssetUploadStatus.READY,
+    )
+    page_one = StoryPage(
+        story=story,
+        page_number=1,
+        text_content="The lantern glowed softly.",
+        image_prompt="A glowing lantern by a forest path",
+        continuity_notes="Keep the fox scarf visible.",
+        status=StoryPageStatus.FAILED,
+        image_asset=image_asset,
+    )
+    page_two = StoryPage(
+        story=story,
+        page_number=2,
+        text_content="The owl listened to the wind.",
+        image_prompt="A sleepy owl beside a silver pond",
+        continuity_notes="Keep the silver pond visible.",
+        status=StoryPageStatus.FAILED,
+    )
+    db_session.add_all([user, child, voice_profile, story, original_job, image_asset, page_one, page_two])
+    await db_session.commit()
+
+    response = await client.post(f"{STORIES_URL}/{story.id}/pages/{page_one.id}/retry-missing")
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["status"] == "generating"
+    assert len(audio_task_calls) == 1
+    assert audio_task_calls[0][0] == str(page_one.id)
+    assert image_task_calls == []
+
+    refreshed_pages = (
+        await db_session.execute(
+            select(StoryPage)
+            .where(StoryPage.story_id == story.id)
+            .order_by(StoryPage.page_number.asc())
+        )
+    ).scalars().all()
+    assert refreshed_pages[0].status == StoryPageStatus.IMAGE_READY
+    assert refreshed_pages[1].status == StoryPageStatus.FAILED
+
+
 async def test_run_text_generation_success(db_session, monkeypatch):
     from app.integrations.anthropic import StoryPageOutput, StoryTextOutput
 
@@ -494,7 +794,7 @@ async def test_run_text_generation_success(db_session, monkeypatch):
     # Story stays GENERATING while images are being generated
     assert refreshed_story.status == StoryStatus.GENERATING
     assert refreshed_story.title == "Moon Garden"
-    assert refreshed_job.provider_image == "google_imagen"
+    assert refreshed_job.provider_image == "google_gemini_image"
     assert len(pages) == 2
     assert pages[0].status == StoryPageStatus.TEXT_READY
     assert len(page_generations) == 2

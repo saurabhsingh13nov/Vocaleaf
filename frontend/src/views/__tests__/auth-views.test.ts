@@ -18,8 +18,12 @@ vi.mock('@/composables/useAuth', () => ({
 
 vi.mock('@/services/stories', () => ({
   createStory: vi.fn(),
+  deleteStory: vi.fn(),
+  getAssetUrl: vi.fn(),
   getStory: vi.fn(),
   getStories: vi.fn().mockResolvedValue([]),
+  retryStoryMissingOutputs: vi.fn(),
+  retryStoryPageMissingOutputs: vi.fn(),
 }))
 
 vi.mock('vue-router', async () => {

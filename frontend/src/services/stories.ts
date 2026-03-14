@@ -13,6 +13,8 @@ export interface StoryPage {
   image_asset_id: string | null
   audio_asset_id: string | null
   duration_ms: number | null
+  retryable_outputs?: Array<'image' | 'audio'>
+  output_errors?: Partial<Record<'image' | 'audio', string>>
   created_at: string
   updated_at: string
 }
@@ -31,6 +33,7 @@ export interface Story {
   language: string
   art_style: string | null
   latest_error_message: string | null
+  can_resume_missing_outputs?: boolean
   created_at: string
   updated_at: string
   pages: StoryPage[]
@@ -79,6 +82,16 @@ export async function getStory(storyId: string): Promise<Story> {
 
 export async function deleteStory(storyId: string): Promise<void> {
   await api.delete(`/stories/${storyId}`)
+}
+
+export async function retryStoryMissingOutputs(storyId: string): Promise<Story> {
+  const { data } = await api.post<Story>(`/stories/${storyId}/retry-missing`)
+  return data
+}
+
+export async function retryStoryPageMissingOutputs(storyId: string, pageId: string): Promise<Story> {
+  const { data } = await api.post<Story>(`/stories/${storyId}/pages/${pageId}/retry-missing`)
+  return data
 }
 
 export interface AssetReadUrlResponse {

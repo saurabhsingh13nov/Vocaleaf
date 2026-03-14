@@ -31,6 +31,7 @@ def on_worker_process_shutdown(**kwargs) -> None:
 
 
 # Import task modules so Celery registers decorators on startup.
+import app.workers.audio_worker  # noqa: F401,E402
 import app.workers.image_worker  # noqa: F401,E402
 import app.workers.text_worker  # noqa: F401,E402
 import app.workers.voice_clone_worker  # noqa: F401,E402
