@@ -62,7 +62,7 @@ class GoogleImagenClient:
             "number_of_images": 1,
             "aspect_ratio": aspect_ratio,
             "output_mime_type": "image/png",
-            "safety_filter_level": types.SafetyFilterLevel.BLOCK_MEDIUM_AND_ABOVE,
+            "safety_filter_level": types.SafetyFilterLevel.BLOCK_LOW_AND_ABOVE,
             "person_generation": types.PersonGeneration.ALLOW_ADULT,
         }
         if negative_prompt:
@@ -78,7 +78,7 @@ class GoogleImagenClient:
         except GoogleImagenError:
             raise
         except Exception as exc:
-            detail = _normalize_error_detail(exc)
+            detail = _normalize_error_detail(exc, model=self.model)
             raise GoogleImagenError(detail) from exc
 
         if not response.generated_images:
@@ -102,7 +102,7 @@ def get_google_imagen_client() -> GoogleImagenClient:
     )
 
 
-def _normalize_error_detail(exc: Exception) -> str:
+def _normalize_error_detail(exc: Exception, *, model: str) -> str:
     detail = str(exc).strip() or "Imagen image generation failed"
     lowered = detail.lower()
 
@@ -110,6 +110,21 @@ def _normalize_error_detail(exc: Exception) -> str:
         return (
             "Google GenAI authentication failed. "
             "Update GOOGLE_GENAI_API_KEY and restart the backend and worker."
+        )
+
+    if "400" in lowered and "safetysetting" in lowered and "block_low_and_above" in lowered:
+        return (
+            "Google Imagen rejected the configured safety filter level for this model. "
+            "The backend now defaults to BLOCK_LOW_AND_ABOVE for Imagen 4. "
+            f"Restart the backend and worker. Provider error: {detail}"
+        )
+
+    if "404" in lowered and "not_found" in lowered and "models/" in lowered:
+        return (
+            f"Google Imagen model '{model}' is unavailable for the Gemini API. "
+            "Set IMAGEN_MODEL to a currently supported model such as "
+            "'imagen-4.0-generate-001' and restart the backend and worker. "
+            f"Provider error: {detail}"
         )
 
     return detail

@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
-from app.db.session import get_async_session_factory
+from app.db.session import dispose_session_state, dispose_session_state_sync, get_async_session_factory
 from app.integrations.elevenlabs import ElevenLabsError, ElevenLabsSample, get_elevenlabs_client
 from app.integrations.r2 import R2Error, R2ObjectNotFoundError, get_r2_client
 from app.models.enums import AssetUploadStatus, VoiceProfileStatus, VoiceSampleStatus
@@ -24,9 +24,14 @@ async def run_voice_clone(
     *,
     session_factory: async_sessionmaker[AsyncSession] | None = None,
 ) -> None:
+    owns_session_factory = session_factory is None
     session_factory = session_factory or get_async_session_factory()
-    async with session_factory() as db:
-        await run_voice_clone_in_session(db, profile_id)
+    try:
+        async with session_factory() as db:
+            await run_voice_clone_in_session(db, profile_id)
+    finally:
+        if owns_session_factory:
+            await dispose_session_state()
 
 
 async def _load_profile_for_status_update(db: AsyncSession, profile_id: uuid.UUID) -> VoiceProfile | None:
@@ -59,9 +64,14 @@ async def mark_voice_clone_failed(
     session_factory: async_sessionmaker[AsyncSession] | None = None,
 ) -> None:
     """Restore a stuck clone request to a failed state after an unexpected worker crash."""
+    owns_session_factory = session_factory is None
     session_factory = session_factory or get_async_session_factory()
-    async with session_factory() as db:
-        await mark_voice_clone_failed_in_session(db, profile_id)
+    try:
+        async with session_factory() as db:
+            await mark_voice_clone_failed_in_session(db, profile_id)
+    finally:
+        if owns_session_factory:
+            await dispose_session_state()
 
 
 async def run_voice_clone_in_session(db: AsyncSession, profile_id: uuid.UUID) -> None:
@@ -147,6 +157,7 @@ def clone_voice_profile_task(profile_id: str) -> None:
     except Exception:
         logger.exception("Voice clone task crashed for profile %s", profile_id)
         try:
+            dispose_session_state_sync()
             asyncio.run(mark_voice_clone_failed(profile_uuid))
         except Exception:
             logger.exception("Voice clone crash cleanup failed for profile %s", profile_id)

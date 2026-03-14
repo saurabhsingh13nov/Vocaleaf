@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
-from app.db.session import get_async_session_factory
+from app.db.session import dispose_session_state, dispose_session_state_sync, get_async_session_factory
 from app.integrations.anthropic import AnthropicError, StoryTextOutput, get_anthropic_client
 from app.models.enums import GenerationType, JobStatus, StoryPageStatus, StoryStatus
 from app.models.story import Story
@@ -63,9 +63,14 @@ async def run_text_generation(
     *,
     session_factory: async_sessionmaker[AsyncSession] | None = None,
 ) -> None:
+    owns_session_factory = session_factory is None
     session_factory = session_factory or get_async_session_factory()
-    async with session_factory() as db:
-        await run_text_generation_in_session(db, story_id=story_id, job_id=job_id)
+    try:
+        async with session_factory() as db:
+            await run_text_generation_in_session(db, story_id=story_id, job_id=job_id)
+    finally:
+        if owns_session_factory:
+            await dispose_session_state()
 
 
 async def mark_text_generation_failed_in_session(
@@ -99,14 +104,19 @@ async def mark_text_generation_failed(
     error_message: str = "Story generation failed",
     session_factory: async_sessionmaker[AsyncSession] | None = None,
 ) -> None:
+    owns_session_factory = session_factory is None
     session_factory = session_factory or get_async_session_factory()
-    async with session_factory() as db:
-        await mark_text_generation_failed_in_session(
-            db,
-            story_id=story_id,
-            job_id=job_id,
-            error_message=error_message,
-        )
+    try:
+        async with session_factory() as db:
+            await mark_text_generation_failed_in_session(
+                db,
+                story_id=story_id,
+                job_id=job_id,
+                error_message=error_message,
+            )
+    finally:
+        if owns_session_factory:
+            await dispose_session_state()
 
 
 async def run_text_generation_in_session(
@@ -234,6 +244,7 @@ def generate_story_text_task(story_id: str, job_id: str) -> None:
     except Exception as exc:
         logger.exception("Text generation task crashed for story %s", story_id)
         try:
+            dispose_session_state_sync()
             asyncio.run(
                 mark_text_generation_failed(
                     story_uuid,

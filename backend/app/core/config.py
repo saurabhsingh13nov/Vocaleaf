@@ -31,7 +31,7 @@ class Settings(BaseSettings):
 
     # Google Imagen (via Gemini API)
     google_genai_api_key: str = ""
-    imagen_model: str = "imagen-3.0-generate-002"
+    imagen_model: str = "imagen-4.0-generate-001"
 
     # Cloudflare R2 / S3-compatible object storage
     r2_endpoint_url: str = ""

@@ -64,7 +64,13 @@ uv run alembic upgrade head
 uv run uvicorn app.main:app --reload --reload-dir app --reload-exclude '.venv/*'
 ```
 
-Set `ANTHROPIC_API_KEY` in `backend/.env` before using story text generation. Restart both the FastAPI server and the Celery worker after changing provider credentials.
+Set the provider keys you need in `backend/.env` before using generation flows:
+
+- `ANTHROPIC_API_KEY` for story text generation
+- `GOOGLE_GENAI_API_KEY` for image generation
+- `IMAGEN_MODEL=imagen-4.0-generate-001` unless you intentionally override to another currently supported Gemini API Imagen model
+
+Restart both the FastAPI server and the Celery worker after changing provider credentials or model settings.
 
 Run the frontend in a second terminal:
 

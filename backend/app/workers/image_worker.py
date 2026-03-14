@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
-from app.db.session import get_async_session_factory
+from app.db.session import dispose_session_state, dispose_session_state_sync, get_async_session_factory
 from app.integrations.google_imagen import GoogleImagenError, get_google_imagen_client
 from app.integrations.r2 import get_r2_client
 from app.models.asset import Asset
@@ -60,9 +60,14 @@ async def run_image_generation(
     *,
     session_factory: async_sessionmaker[AsyncSession] | None = None,
 ) -> None:
+    owns_session_factory = session_factory is None
     session_factory = session_factory or get_async_session_factory()
-    async with session_factory() as db:
-        await run_image_generation_in_session(db, story_page_id=story_page_id, job_id=job_id)
+    try:
+        async with session_factory() as db:
+            await run_image_generation_in_session(db, story_page_id=story_page_id, job_id=job_id)
+    finally:
+        if owns_session_factory:
+            await dispose_session_state()
 
 
 async def mark_image_generation_failed_in_session(
@@ -99,14 +104,19 @@ async def mark_image_generation_failed(
     error_message: str = "Image generation failed",
     session_factory: async_sessionmaker[AsyncSession] | None = None,
 ) -> None:
+    owns_session_factory = session_factory is None
     session_factory = session_factory or get_async_session_factory()
-    async with session_factory() as db:
-        await mark_image_generation_failed_in_session(
-            db,
-            story_page_id=story_page_id,
-            job_id=job_id,
-            error_message=error_message,
-        )
+    try:
+        async with session_factory() as db:
+            await mark_image_generation_failed_in_session(
+                db,
+                story_page_id=story_page_id,
+                job_id=job_id,
+                error_message=error_message,
+            )
+    finally:
+        if owns_session_factory:
+            await dispose_session_state()
 
 
 async def run_image_generation_in_session(
@@ -250,6 +260,7 @@ def generate_page_image_task(story_page_id: str, job_id: str) -> None:
     except Exception as exc:
         logger.exception("Image generation task crashed for page %s", story_page_id)
         try:
+            dispose_session_state_sync()
             asyncio.run(
                 mark_image_generation_failed(
                     page_uuid,
