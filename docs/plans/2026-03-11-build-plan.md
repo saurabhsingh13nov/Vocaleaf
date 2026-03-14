@@ -2,9 +2,9 @@
 
 ## Context
 
-Vocaleaf is a personalized children's storybook web app. This plan started before implementation and still serves as the roadmap for the remaining work. The repository now contains the completed foundation for phases 0 through 7, and the later phases below remain the forward-looking build sequence.
+Vocaleaf is a personalized children's storybook web app. This plan started before implementation and now serves mostly as a historical roadmap plus a record of the chosen implementation direction.
 
-## Current Repo Status (March 13, 2026)
+## Current Repo Status (March 14, 2026)
 
 - Phase 0 complete: backend/frontend scaffolding, local tooling, and Docker Compose exist.
 - Phase 1 complete: core SQLAlchemy models and the initial Alembic migration exist.
@@ -16,6 +16,9 @@ Vocaleaf is a personalized children's storybook web app. This plan started befor
 - Phase 7 complete: voice profiles and sample upload — consent-gated profile creation, voice profile listing, direct signed voice-sample uploads, sample confirmation, sample/profile deletion with raw-storage cleanup, browser recording/file-upload UI, clearer phase-7 status labels, and frontend/backend test coverage.
 - Phase 8 complete: Celery + voice cloning worker — Redis-backed Celery app, manual clone initiation, official ElevenLabs Python SDK integration boundary, prefork-safe async worker sessions, profile detail polling, worker-driven status transitions, and a mobile-first UI refresh across the current product surfaces.
 - Phase 9 complete: story creation + text generation — Anthropic integration boundary, story create/list/detail APIs, Celery text worker, dashboard recent-story surface, story creation form, and story detail polling with page-level text output.
+- Phase 10 complete: story illustration generation — Gemini image generation, private page-image assets, signed illustration playback, and completion tracking after illustrations finish.
+- Phase 11 complete: per-page narration audio — ElevenLabs TTS generation, private page-audio assets, signed narration playback, and narration-aware completion tracking.
+- Phase 12 complete: reader/playback UI — all-pages gallery, focused book view, inline full-text expansion, line-by-line narration reveal, and narration-driven autoplay with a one-second gap between pages.
 - `npm run build` and all tests pass.
 
 ## Tech Stack (Locked In)
@@ -394,22 +397,18 @@ vocaleaf/
 
 ---
 
-### Phase 12: Story Reader / Playback
+### Phase 12: Story Reader / Playback ✅
 **Goal:** Full story reading experience — page-by-page with illustrations and synced audio.
 
 **Frontend:**
-- `src/views/StoryReaderView.vue` — immersive reader:
-  - Full-screen or focused layout
-  - Page navigation (next/prev)
-  - Large illustration display
-  - Narration text overlay
-  - Audio playback (auto-play with page turns or manual)
-  - Progress indicator
-- `src/composables/useStoryPlayer.ts` — manages playback state, page transitions, audio sync
+- focused reader behavior delivered inside the story detail route rather than a separate reader route
+- all-pages gallery, focused book view, and narration-driven autoplay mode
+- large illustration-first layout with inline narration-line reveal and expandable full text
+- shared playback composable for page transitions, autoplay timing, and active-line state
 
 **Vue.js learning moment:** _Advanced component composition, `<Transition>` for page animations, audio element control with refs, keyboard navigation events, responsive design with Tailwind._
 
-**Verification:** Open a completed story in the reader. Navigate pages, hear audio, see illustrations. Works on desktop and mobile viewport.
+**Verification:** Open a completed narrated story in story detail. Switch between all-pages, book view, and autoplay; hear narration, see illustrations, and watch the reader advance after each page finishes.
 
 ---
 

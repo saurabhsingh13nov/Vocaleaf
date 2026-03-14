@@ -82,6 +82,8 @@ const mockedRetryStoryMissingOutputs = vi.mocked(retryStoryMissingOutputs)
 const mockedRetryStoryPageMissingOutputs = vi.mocked(retryStoryPageMissingOutputs)
 const mockedGetChildren = vi.mocked(getChildren)
 const mockedGetVoiceProfiles = vi.mocked(getVoiceProfiles)
+const mediaPlayMock = vi.fn().mockResolvedValue(undefined)
+const mediaPauseMock = vi.fn()
 
 const sampleUser: User = {
   id: 'cc4e3be9-0e56-4d1b-9128-655ddcf06092',
@@ -118,8 +120,22 @@ describe('story views', () => {
     vi.clearAllMocks()
     document.body.innerHTML = ''
     setActivePinia(createPinia())
+    vi.useRealTimers()
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 1024,
+      writable: true,
+    })
     routeRef.value = { params: { storyId: 'story-1' } }
     useAuthMock.mockReturnValue(makeAuthState())
+    Object.defineProperty(window.HTMLMediaElement.prototype, 'play', {
+      configurable: true,
+      value: mediaPlayMock,
+    })
+    Object.defineProperty(window.HTMLMediaElement.prototype, 'pause', {
+      configurable: true,
+      value: mediaPauseMock,
+    })
     mockedGetStories.mockResolvedValue([])
     mockedGetAssetUrl.mockResolvedValue({ url: 'https://assets.example/file.mp3', expires_at: '2026-03-13T20:10:00Z' })
     mockedGetChildren.mockResolvedValue([
@@ -252,6 +268,7 @@ describe('story views', () => {
     expect(wrapper.text()).toContain('Lantern Walk')
     expect(wrapper.text()).toContain('The lantern glowed softly beneath the moon.')
     expect(wrapper.text()).toContain('Illustrating')
+    expect(wrapper.find('[data-testid="reader-autoplay-toggle"]').exists()).toBe(false)
   })
 
   it('renders per-page narration when audio is available', async () => {
@@ -303,6 +320,425 @@ describe('story views', () => {
     expect(mockedGetAssetUrl).toHaveBeenCalledWith('audio-1')
     expect(wrapper.text()).toContain('Page narration')
     expect(wrapper.find('audio').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="reader-autoplay-toggle"]').exists()).toBe(true)
+  })
+
+  it('shows one narration line at a time in book view until full text is expanded', async () => {
+    mockedGetStory.mockResolvedValue({
+      id: 'story-1',
+      user_id: 'user-1',
+      child_id: 'child-1',
+      voice_profile_id: 'voice-1',
+      title: 'Sunlit Meadow',
+      prompt: 'A meadow walk',
+      theme: 'Bedtime',
+      status: 'ready',
+      target_page_count: 1,
+      reading_level: 'Preschool',
+      language: 'en',
+      art_style: 'Dreamy',
+      latest_error_message: null,
+      can_resume_missing_outputs: false,
+      created_at: '2026-03-13T20:00:00Z',
+      updated_at: '2026-03-13T20:02:00Z',
+      pages: [
+        {
+          id: 'page-1',
+          page_number: 1,
+          text_content: 'Akshat skipped across the meadow with a lantern glowing in his hands. Fireflies circled above him as the rabbit and tortoise cheered from the clover.',
+          image_prompt: 'A lantern beneath the moon',
+          continuity_notes: 'Keep the lantern warm and golden.',
+          status: 'complete',
+          image_asset_id: null,
+          audio_asset_id: 'audio-1',
+          duration_ms: 6000,
+          retryable_outputs: [],
+          output_errors: {},
+          created_at: '2026-03-13T20:01:00Z',
+          updated_at: '2026-03-13T20:02:00Z',
+        },
+      ],
+    })
+
+    const wrapper = mount(StoryDetailView, {
+      global: {
+        stubs: {
+          RouterLink: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const bookViewButton = wrapper.findAll('button').find((entry) => entry.text() === 'Book view')
+    await bookViewButton?.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="reader-line"]').text()).toContain('Akshat skipped across the meadow with a lantern glowing in his hands.')
+    expect(wrapper.text()).not.toContain('Fireflies circled above him as the rabbit and tortoise cheered from the clover.')
+
+    await wrapper.get('[data-testid="reader-full-text-toggle"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Fireflies circled above him as the rabbit and tortoise cheered from the clover.')
+  })
+
+  it('uses the image overlay control for reader audio in book view', async () => {
+    mockedGetStory.mockResolvedValue({
+      id: 'story-1',
+      user_id: 'user-1',
+      child_id: 'child-1',
+      voice_profile_id: 'voice-1',
+      title: 'Lantern Walk',
+      prompt: 'A lantern walk',
+      theme: 'Bedtime',
+      status: 'ready',
+      target_page_count: 1,
+      reading_level: 'Preschool',
+      language: 'en',
+      art_style: 'Dreamy',
+      latest_error_message: null,
+      can_resume_missing_outputs: false,
+      created_at: '2026-03-13T20:00:00Z',
+      updated_at: '2026-03-13T20:02:00Z',
+      pages: [
+        {
+          id: 'page-1',
+          page_number: 1,
+          text_content: 'The lantern glowed softly beneath the moon.',
+          image_prompt: 'A lantern beneath the moon',
+          continuity_notes: 'Keep the lantern warm and golden.',
+          status: 'complete',
+          image_asset_id: null,
+          audio_asset_id: 'audio-1',
+          duration_ms: 4200,
+          retryable_outputs: [],
+          output_errors: {},
+          created_at: '2026-03-13T20:01:00Z',
+          updated_at: '2026-03-13T20:02:00Z',
+        },
+      ],
+    })
+
+    const wrapper = mount(StoryDetailView, {
+      global: {
+        stubs: {
+          RouterLink: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const bookViewButton = wrapper.findAll('button').find((entry) => entry.text() === 'Book view')
+    await bookViewButton?.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="reader-audio-overlay-toggle"]').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('Page narration')
+
+    await wrapper.get('[data-testid="reader-audio-overlay-toggle"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="reader-audio-popover"]').text()).toContain('Play audio')
+    expect(wrapper.get('[data-testid="reader-audio-popover"]').text()).toContain('1.25x')
+  })
+
+  it('disables autoplay until narrated pages are ready', async () => {
+    mockedGetStory.mockResolvedValue({
+      id: 'story-1',
+      user_id: 'user-1',
+      child_id: 'child-1',
+      voice_profile_id: 'voice-1',
+      title: 'Lantern Walk',
+      prompt: 'A lantern walk',
+      theme: 'Bedtime',
+      status: 'generating',
+      target_page_count: 1,
+      reading_level: 'Preschool',
+      language: 'en',
+      art_style: 'Dreamy',
+      latest_error_message: null,
+      can_resume_missing_outputs: false,
+      created_at: '2026-03-13T20:00:00Z',
+      updated_at: '2026-03-13T20:02:00Z',
+      pages: [
+        {
+          id: 'page-1',
+          page_number: 1,
+          text_content: 'The lantern glowed softly beneath the moon.',
+          image_prompt: 'A lantern beneath the moon',
+          continuity_notes: 'Keep the lantern warm and golden.',
+          status: 'image_ready',
+          image_asset_id: null,
+          audio_asset_id: 'audio-1',
+          duration_ms: 4200,
+          retryable_outputs: [],
+          output_errors: {},
+          created_at: '2026-03-13T20:01:00Z',
+          updated_at: '2026-03-13T20:02:00Z',
+        },
+      ],
+    })
+    mockedGetAssetUrl.mockRejectedValueOnce(new Error('signed url pending'))
+
+    const wrapper = mount(StoryDetailView, {
+      global: {
+        stubs: {
+          RouterLink: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const autoplayButton = wrapper.get('[data-testid="reader-autoplay-toggle"]')
+    expect(autoplayButton.attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-testid="reader-autoplay-hint"]').text()).toContain('Autoplay unlocks once narration is ready for every page.')
+  })
+
+  it('advances pages automatically in autoplay mode', async () => {
+    vi.useFakeTimers()
+    mockedGetStory.mockResolvedValue({
+      id: 'story-1',
+      user_id: 'user-1',
+      child_id: 'child-1',
+      voice_profile_id: 'voice-1',
+      title: 'Lantern Walk',
+      prompt: 'A lantern walk',
+      theme: 'Bedtime',
+      status: 'ready',
+      target_page_count: 2,
+      reading_level: 'Preschool',
+      language: 'en',
+      art_style: 'Dreamy',
+      latest_error_message: null,
+      can_resume_missing_outputs: false,
+      created_at: '2026-03-13T20:00:00Z',
+      updated_at: '2026-03-13T20:02:00Z',
+      pages: [
+        {
+          id: 'page-1',
+          page_number: 1,
+          text_content: 'The lantern glowed softly beneath the moon.',
+          image_prompt: 'A lantern beneath the moon',
+          continuity_notes: 'Keep the lantern warm and golden.',
+          status: 'complete',
+          image_asset_id: null,
+          audio_asset_id: 'audio-1',
+          duration_ms: 4200,
+          retryable_outputs: [],
+          output_errors: {},
+          created_at: '2026-03-13T20:01:00Z',
+          updated_at: '2026-03-13T20:02:00Z',
+        },
+        {
+          id: 'page-2',
+          page_number: 2,
+          text_content: 'The rabbit and tortoise waved from the clover.',
+          image_prompt: 'Forest friends waving from the clover',
+          continuity_notes: 'Keep the meadow bright and warm.',
+          status: 'complete',
+          image_asset_id: null,
+          audio_asset_id: 'audio-2',
+          duration_ms: 3900,
+          retryable_outputs: [],
+          output_errors: {},
+          created_at: '2026-03-13T20:01:00Z',
+          updated_at: '2026-03-13T20:02:00Z',
+        },
+      ],
+    })
+    mockedGetAssetUrl
+      .mockResolvedValueOnce({ url: 'https://assets.example/audio-1.mp3', expires_at: '2026-03-13T20:10:00Z' })
+      .mockResolvedValueOnce({ url: 'https://assets.example/audio-2.mp3', expires_at: '2026-03-13T20:10:00Z' })
+
+    const wrapper = mount(StoryDetailView, {
+      global: {
+        stubs: {
+          RouterLink: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    await wrapper.get('[data-testid="reader-autoplay-toggle"]').trigger('click')
+    await flushPromises()
+
+    expect(mediaPlayMock).toHaveBeenCalled()
+
+    const audio = wrapper.get('audio').element as HTMLAudioElement
+    Object.defineProperty(audio, 'duration', {
+      configurable: true,
+      value: 4.2,
+    })
+    Object.defineProperty(audio, 'ended', {
+      configurable: true,
+      get: () => false,
+    })
+    audio.currentTime = 4.15
+    audio.dispatchEvent(new Event('pause'))
+    await nextTick()
+    audio.dispatchEvent(new Event('ended'))
+    await nextTick()
+    vi.advanceTimersByTime(1000)
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="reader-current-page"]').text()).toContain('Page 2')
+    expect(mediaPlayMock.mock.calls.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('renders autoplay as an immersive image-only mode on mobile', async () => {
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 390,
+      writable: true,
+    })
+
+    mockedGetStory.mockResolvedValue({
+      id: 'story-1',
+      user_id: 'user-1',
+      child_id: 'child-1',
+      voice_profile_id: 'voice-1',
+      title: 'Lantern Walk',
+      prompt: 'A lantern walk',
+      theme: 'Bedtime',
+      status: 'ready',
+      target_page_count: 1,
+      reading_level: 'Preschool',
+      language: 'en',
+      art_style: 'Dreamy',
+      latest_error_message: null,
+      can_resume_missing_outputs: false,
+      created_at: '2026-03-13T20:00:00Z',
+      updated_at: '2026-03-13T20:02:00Z',
+      pages: [
+        {
+          id: 'page-1',
+          page_number: 1,
+          text_content: 'The lantern glowed softly beneath the moon.',
+          image_prompt: 'A lantern beneath the moon',
+          continuity_notes: 'Keep the lantern warm and golden.',
+          status: 'complete',
+          image_asset_id: null,
+          audio_asset_id: 'audio-1',
+          duration_ms: 4200,
+          retryable_outputs: [],
+          output_errors: {},
+          created_at: '2026-03-13T20:01:00Z',
+          updated_at: '2026-03-13T20:02:00Z',
+        },
+      ],
+    })
+
+    const wrapper = mount(StoryDetailView, {
+      global: {
+        stubs: {
+          RouterLink: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    await wrapper.get('[data-testid="reader-autoplay-toggle"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="reader-line"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="reader-current-page"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="reader-exit-autoplay"]').exists()).toBe(true)
+    expect(wrapper.find('.story-reader__pagination').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="reader-audio-overlay-toggle"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="reader-full-text-toggle"]').exists()).toBe(false)
+  })
+
+  it('stops autoplay on a manual pause instead of advancing pages', async () => {
+    vi.useFakeTimers()
+    mockedGetStory.mockResolvedValue({
+      id: 'story-1',
+      user_id: 'user-1',
+      child_id: 'child-1',
+      voice_profile_id: 'voice-1',
+      title: 'Lantern Walk',
+      prompt: 'A lantern walk',
+      theme: 'Bedtime',
+      status: 'ready',
+      target_page_count: 2,
+      reading_level: 'Preschool',
+      language: 'en',
+      art_style: 'Dreamy',
+      latest_error_message: null,
+      can_resume_missing_outputs: false,
+      created_at: '2026-03-13T20:00:00Z',
+      updated_at: '2026-03-13T20:02:00Z',
+      pages: [
+        {
+          id: 'page-1',
+          page_number: 1,
+          text_content: 'The lantern glowed softly beneath the moon.',
+          image_prompt: 'A lantern beneath the moon',
+          continuity_notes: 'Keep the lantern warm and golden.',
+          status: 'complete',
+          image_asset_id: null,
+          audio_asset_id: 'audio-1',
+          duration_ms: 4200,
+          retryable_outputs: [],
+          output_errors: {},
+          created_at: '2026-03-13T20:01:00Z',
+          updated_at: '2026-03-13T20:02:00Z',
+        },
+        {
+          id: 'page-2',
+          page_number: 2,
+          text_content: 'The rabbit and tortoise waved from the clover.',
+          image_prompt: 'Forest friends waving from the clover',
+          continuity_notes: 'Keep the meadow bright and warm.',
+          status: 'complete',
+          image_asset_id: null,
+          audio_asset_id: 'audio-2',
+          duration_ms: 3900,
+          retryable_outputs: [],
+          output_errors: {},
+          created_at: '2026-03-13T20:01:00Z',
+          updated_at: '2026-03-13T20:02:00Z',
+        },
+      ],
+    })
+    mockedGetAssetUrl
+      .mockResolvedValueOnce({ url: 'https://assets.example/audio-1.mp3', expires_at: '2026-03-13T20:10:00Z' })
+      .mockResolvedValueOnce({ url: 'https://assets.example/audio-2.mp3', expires_at: '2026-03-13T20:10:00Z' })
+
+    const wrapper = mount(StoryDetailView, {
+      global: {
+        stubs: {
+          RouterLink: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    await wrapper.get('[data-testid="reader-autoplay-toggle"]').trigger('click')
+    await flushPromises()
+    vi.advanceTimersByTime(1)
+    await flushPromises()
+
+    const audio = wrapper.get('audio').element as HTMLAudioElement
+    Object.defineProperty(audio, 'duration', {
+      configurable: true,
+      value: 4.2,
+    })
+    Object.defineProperty(audio, 'ended', {
+      configurable: true,
+      get: () => false,
+    })
+    audio.currentTime = 1.5
+    audio.dispatchEvent(new Event('pause'))
+    await nextTick()
+    vi.advanceTimersByTime(1500)
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="reader-current-page"]').text()).toContain('Page 1')
+
+    await wrapper.get('[data-testid="reader-audio-overlay-toggle"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="reader-overlay-playback-toggle"]').text()).toContain('Play autoplay')
   })
 
   it('renders a ready story as the dashboard hero', async () => {

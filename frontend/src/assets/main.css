@@ -532,6 +532,47 @@
     line-height: 1.8;
   }
 
+  .reader-mode-toggle {
+    display: inline-flex;
+    gap: 0.25rem;
+    align-items: center;
+    align-self: flex-start;
+    border: 1px solid var(--app-border);
+    border-radius: 999px;
+    padding: 0.25rem;
+    background: rgba(244, 237, 227, 0.82);
+    box-shadow: var(--app-shadow-soft);
+  }
+
+  .reader-mode-toggle__button {
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    padding: 0.75rem 1.15rem;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--app-muted);
+    transition:
+      background-color 160ms ease,
+      color 160ms ease,
+      box-shadow 160ms ease;
+  }
+
+  .reader-mode-toggle__button:hover:not(:disabled) {
+    color: var(--app-ink);
+  }
+
+  .reader-mode-toggle__button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+
+  .reader-mode-toggle__button--active {
+    background: var(--app-surface-strong);
+    color: var(--app-ink);
+    box-shadow: inset 0 0 0 2px rgba(37, 99, 235, 0.9);
+  }
+
   .story-illustration-placeholder {
     aspect-ratio: 4 / 3;
     display: grid;
@@ -577,6 +618,241 @@
     flex-direction: column;
     justify-content: center;
     padding: 0.5rem 0;
+  }
+
+  .story-reader {
+    display: grid;
+    gap: 1.4rem;
+  }
+
+  .story-reader-shell--immersive {
+    margin-inline: 0;
+  }
+
+  .story-reader__stage {
+    width: 100%;
+    max-width: 42rem;
+    margin-inline: auto;
+    position: relative;
+    --story-reader-stage-padding: 1rem;
+    border: 1px solid rgba(214, 194, 171, 0.72);
+    border-radius: 1.75rem;
+    background:
+      radial-gradient(circle at top, rgba(184, 109, 68, 0.1), transparent 32%),
+      linear-gradient(180deg, rgba(255, 253, 249, 0.96), rgba(244, 237, 227, 0.8));
+    padding: var(--story-reader-stage-padding);
+    box-shadow: var(--app-shadow-soft);
+  }
+
+  .story-reader__stage-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.85rem;
+  }
+
+  .story-reader__image-card {
+    aspect-ratio: 16 / 10;
+    min-height: 16rem;
+  }
+
+  .story-reader__panel {
+    width: 100%;
+    max-width: 42rem;
+    margin: 0 auto;
+    border: 1px solid rgba(214, 194, 171, 0.82);
+    border-radius: 1.75rem;
+    background: rgba(255, 253, 249, 0.92);
+    padding: 1.25rem;
+    box-shadow: 0 28px 60px -42px rgba(70, 43, 23, 0.42);
+    backdrop-filter: blur(10px);
+  }
+
+  .story-reader__line-card {
+    border-radius: 1.45rem;
+    background:
+      linear-gradient(180deg, rgba(255, 253, 249, 0.98), rgba(246, 241, 232, 0.94));
+    padding: 1.15rem 1.15rem 1rem;
+  }
+
+  .story-reader__line-label {
+    margin: 0;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--app-accent);
+  }
+
+  .story-reader__line {
+    margin: 0.85rem 0 0;
+    font-family: 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', serif;
+    font-size: clamp(1.45rem, 2.1vw, 2rem);
+    line-height: 1.45;
+    color: var(--app-ink);
+    text-wrap: balance;
+  }
+
+  .story-reader__toggle {
+    margin-top: 0.6rem;
+    font-size: 0.9rem;
+    font-weight: 700;
+  }
+
+  .story-reader__transcript {
+    margin-top: 1rem;
+    display: grid;
+    gap: 0.7rem;
+  }
+
+  .story-reader__transcript-line {
+    margin: 0;
+    border-left: 3px solid transparent;
+    padding-left: 0.85rem;
+    font-family: 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', serif;
+    font-size: 1rem;
+    line-height: 1.75;
+    color: var(--app-muted);
+    transition:
+      color 160ms ease,
+      border-color 160ms ease,
+      transform 160ms ease;
+  }
+
+  .story-reader__transcript-line--active {
+    border-color: var(--app-accent);
+    color: var(--app-ink);
+    transform: translateX(0.1rem);
+  }
+
+  .story-reader__audio-status {
+    margin-top: 1rem;
+    border: 1px solid var(--app-border);
+    border-radius: 1.45rem;
+    background: rgba(244, 237, 227, 0.7);
+    padding: 0.9rem 1rem;
+    font-size: 0.92rem;
+    color: var(--app-muted);
+  }
+
+  .story-reader__immersive-topbar {
+    position: absolute;
+    top: 1rem;
+    left: 1rem;
+    right: 1rem;
+    z-index: 3;
+    display: flex;
+    justify-content: flex-start;
+    pointer-events: none;
+  }
+
+  .story-reader__immersive-exit {
+    pointer-events: auto;
+    border: 1px solid rgba(255, 253, 249, 0.45);
+    border-radius: 999px;
+    background: rgba(36, 29, 23, 0.52);
+    padding: 0.65rem 0.95rem;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #fffaf6;
+    backdrop-filter: blur(16px);
+  }
+
+  .story-reader__audio-overlay {
+    position: absolute;
+    right: calc(var(--story-reader-stage-padding) + 0.7rem);
+    bottom: calc(var(--story-reader-stage-padding) + 0.7rem);
+    z-index: 4;
+    display: flex;
+    align-items: flex-end;
+    gap: 0.75rem;
+  }
+
+  .story-reader__audio-fab {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 3.35rem;
+    height: 3.35rem;
+    border: 1px solid rgba(255, 253, 249, 0.42);
+    border-radius: 999px;
+    background: rgba(36, 29, 23, 0.64);
+    color: #fffaf6;
+    box-shadow: 0 18px 40px -24px rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(16px);
+  }
+
+  .story-reader__audio-fab-icon {
+    width: 1.3rem;
+    height: 1.3rem;
+  }
+
+  .story-reader__audio-popover {
+    width: min(18rem, calc(100vw - 4rem));
+    border: 1px solid rgba(214, 194, 171, 0.9);
+    border-radius: 1.5rem;
+    background: rgba(255, 253, 249, 0.96);
+    padding: 0.95rem;
+    box-shadow: 0 28px 60px -30px rgba(36, 29, 23, 0.42);
+    backdrop-filter: blur(14px);
+  }
+
+  .story-reader__audio-popover-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .story-reader__audio-slider {
+    width: 100%;
+    margin-top: 0.9rem;
+    accent-color: var(--app-accent);
+  }
+
+  .story-reader__audio-speed-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.8rem;
+    margin-top: 0.85rem;
+  }
+
+  .story-reader__audio-speed-buttons {
+    display: inline-flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .story-reader__speed-button {
+    border: 1px solid var(--app-border);
+    border-radius: 999px;
+    background: rgba(255, 253, 249, 0.88);
+    padding: 0.42rem 0.72rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--app-muted);
+  }
+
+  .story-reader__speed-button--active {
+    border-color: var(--app-accent);
+    background: var(--app-accent-soft);
+    color: var(--app-accent-strong);
+  }
+
+  .story-reader__pagination {
+    width: 100%;
+    max-width: 42rem;
+    margin-inline: auto;
+    margin-top: 1.25rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
   }
 
   /* Image card */
@@ -768,6 +1044,16 @@
     .voice-guidance-steps {
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
+
+    .story-reader__stage {
+      --story-reader-stage-padding: 1.25rem;
+    }
+
+    .story-reader__panel {
+      margin-top: -1.75rem;
+      padding: 1.4rem;
+    }
+
   }
 
   @media (min-width: 1024px) {
@@ -783,6 +1069,83 @@
 
     .story-hub-hero__art {
       min-height: auto;
+    }
+
+    .story-reader__stage {
+      --story-reader-stage-padding: 1.5rem;
+    }
+
+    .story-reader__image-card {
+      min-height: 22rem;
+    }
+
+    .story-reader__panel {
+      margin-top: -2.5rem;
+      padding: 1.55rem;
+    }
+  }
+
+  @media (max-width: 767px) {
+    .story-reader {
+      gap: 1rem;
+    }
+
+    .story-reader__stage,
+    .story-reader__panel {
+      width: 100%;
+      max-width: none;
+      margin-inline: 0;
+    }
+
+    .story-reader__stage {
+      --story-reader-stage-padding: 0.9rem;
+      box-shadow: none;
+    }
+
+    .story-reader__panel {
+      padding: 1rem;
+      box-shadow: none;
+    }
+
+    .story-reader--immersive {
+      gap: 1rem;
+    }
+
+    .story-reader--immersive .story-reader__stage {
+      min-height: 0;
+      padding: 0.9rem;
+      border: 1px solid rgba(214, 194, 171, 0.72);
+      border-radius: 1.75rem;
+      background:
+        radial-gradient(circle at top, rgba(184, 109, 68, 0.1), transparent 32%),
+        linear-gradient(180deg, rgba(255, 253, 249, 0.96), rgba(244, 237, 227, 0.8));
+      box-shadow: var(--app-shadow-soft);
+    }
+
+    .story-reader--immersive .story-reader__image-card {
+      min-height: 0;
+      max-height: 58vh;
+      border-radius: 1.25rem;
+      aspect-ratio: auto;
+    }
+
+    .story-reader--immersive .story-image-card__img {
+      width: 100%;
+      height: auto;
+      max-height: 54vh;
+      object-fit: contain;
+    }
+
+    .story-reader--immersive .story-image-card--ready {
+      box-shadow: none;
+    }
+
+    .story-reader__panel--immersive {
+      padding-top: 0.85rem;
+    }
+
+    .story-reader__panel--immersive .story-reader__line-card {
+      padding: 1rem;
     }
   }
 }

@@ -12,7 +12,7 @@ The current product direction is a FastAPI backend plus background workers, Post
 
 ## Current Status
 
-This repository is in active development — phases 0 through 11 are complete.
+This repository is in active development — phases 0 through 12 are complete.
 
 - **Phase 0:** Project scaffolding — FastAPI + Vue 3 + Docker Compose
 - **Phase 1:** Database models — 17 ORM models, 12 enums, Alembic migrations
@@ -26,6 +26,7 @@ This repository is in active development — phases 0 through 11 are complete.
 - **Phase 9:** Story creation + text generation — story create/list/detail APIs, Anthropic integration boundary, Celery text worker, generation polling, and story detail UI with page-level text output
 - **Phase 10:** Story illustration generation — Google Gemini image page-image worker, signed image playback on story detail, and end-to-end story completion after illustrations finish
 - **Phase 11:** Per-page narration audio — ElevenLabs TTS page-audio worker, private audio asset storage, signed audio playback on story detail, and narration-aware story completion
+- **Phase 12:** Story reader/playback UI — focused book view, narration-first line reveal, inline full-text expansion, and autoplay page turns paced off narration with a one-second gap between pages
 
 Architecture and schema docs are ahead of feature implementation by design.
 
@@ -148,7 +149,7 @@ Backend:
 - Celery-backed image generation worker that calls Google Gemini image generation, stores private page-image assets, and keeps stories generating until all illustrations finish
 - Celery-backed audio generation worker that calls ElevenLabs TTS for voice-selected stories, stores private page-audio assets, and records best-effort narration duration metadata
 - 17 ORM models and Alembic migrations for the full domain schema
-- 94 backend tests
+- 134 backend tests
 
 Frontend:
 
@@ -158,15 +159,15 @@ Frontend:
 - voice profiles page with consent-gated profile creation, in-browser recording, file upload, sample deletion, profile deletion, manual clone trigger, and automatic status polling
 - story creation form, story detail view, generation polling, and dashboard recent-stories surface
 - signed image and narration playback on story detail with generation-aware progress states
+- focused reader modes on story detail: all-pages gallery, book view, and narration-driven autoplay with line-by-line text reveal
 - clearer phase-7 profile status labels in the UI (`Add samples`, `Awaiting clone`) instead of the raw backend `pending` state
 - mobile-first warm editorial refresh across the current auth, dashboard, children, and voice surfaces
 - Pinia stores for auth, children, voice, and story state
-- 58 frontend unit tests for stores, router guards, auth views (including link-mode), children views, voice flows, and story flows
+- 76 frontend unit tests for stores, router guards, auth views (including link-mode), children views, voice flows, and story flows
 - build tooling and lint/type-check setup
 
 Not yet built:
 
-- story reader/playback UI (Phase 12)
 - provider-side voice deletion and preview sample generation
 
 ## Notes

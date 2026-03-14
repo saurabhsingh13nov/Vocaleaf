@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, onUnmounted, ref, watch, type ComponentPublicInstance } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import ConfirmModal from '@/components/ConfirmModal.vue'
+import { useStoryReader } from '@/composables/useStoryReader'
 import { useChildrenStore } from '@/stores/children'
 import { useStoriesStore } from '@/stores/stories'
 
@@ -14,6 +15,10 @@ const deleteModalOpen = ref(false)
 const isDeleting = ref(false)
 const isRetryingStory = ref(false)
 const retryingPageId = ref<string | null>(null)
+const parallaxElements = ref<HTMLElement[]>([])
+const lightboxOpen = ref(false)
+const lightboxIndex = ref(0)
+const viewportWidth = ref(typeof window === 'undefined' ? 1024 : window.innerWidth)
 
 const storyId = computed(() => String(route.params.storyId ?? ''))
 const story = computed(() => (
@@ -25,34 +30,33 @@ const childName = computed(() => {
   const child = childrenStore.children.find((entry) => entry.id === story.value?.child_id)
   return child?.name ?? 'Your child'
 })
-
 const sortedPages = computed(() => {
   if (!story.value) return []
   return [...story.value.pages].sort((a, b) => a.page_number - b.page_number)
 })
-
 const totalPages = computed(() => sortedPages.value.length)
-const currentPage = computed(() => sortedPages.value[currentPageIndex.value] ?? null)
 const imagesReadyCount = computed(() =>
-  sortedPages.value.filter((p) => p.image_asset_id).length
+  sortedPages.value.filter((page) => page.image_asset_id).length
 )
 const audioReadyCount = computed(() =>
-  sortedPages.value.filter((p) => p.audio_asset_id).length
+  sortedPages.value.filter((page) => page.audio_asset_id).length
 )
 const hasNarration = computed(() => (
   story.value?.voice_profile_id !== null
   && (
     story.value?.status === 'generating'
-    || sortedPages.value.some((p) => Boolean(p.audio_asset_id) || p.status === 'complete' || p.status === 'audio_ready')
+    || sortedPages.value.some((page) => Boolean(page.audio_asset_id) || page.status === 'complete' || page.status === 'audio_ready')
   )
 ))
-const completedProgressUnits = computed(() => imagesReadyCount.value + (hasNarration.value ? audioReadyCount.value : 0))
+const completedProgressUnits = computed(() => (
+  imagesReadyCount.value + (hasNarration.value ? audioReadyCount.value : 0)
+))
 const totalProgressUnits = computed(() => totalPages.value * (hasNarration.value ? 2 : 1))
-const progressPercent = computed(() =>
+const progressPercent = computed(() => (
   totalProgressUnits.value > 0
     ? Math.round((completedProgressUnits.value / totalProgressUnits.value) * 100)
     : 0
-)
+))
 const isGenerating = computed(() => story.value?.status === 'generating')
 const progressSummary = computed(() => {
   if (totalPages.value === 0) return ''
@@ -61,73 +65,100 @@ const progressSummary = computed(() => {
   }
   return `${imagesReadyCount.value} of ${totalPages.value} illustrated`
 })
-
-// View mode: 'book' (one page at a time) or 'grid' (all pages)
-const viewMode = ref<'book' | 'grid'>('grid')
-const currentPageIndex = ref(0)
-
-// Lightbox
-const lightboxOpen = ref(false)
-const lightboxIndex = ref(0)
-
-const pagesWithImages = computed(() =>
-  sortedPages.value.filter((p) => p.image_asset_id && storiesStore.imageUrls[p.image_asset_id])
-)
+const pagesWithImages = computed(() => (
+  sortedPages.value.filter((page) => page.image_asset_id && storiesStore.imageUrls[page.image_asset_id])
+))
 const canResumeMissingOutputs = computed(() => Boolean(story.value?.can_resume_missing_outputs))
 
-function openLightbox(pageIndex: number) {
-  const page = sortedPages.value[pageIndex]
-  if (!page?.image_asset_id || !storiesStore.imageUrls[page.image_asset_id]) return
-  lightboxIndex.value = pagesWithImages.value.findIndex((p) => p.id === page.id)
-  if (lightboxIndex.value === -1) return
-  lightboxOpen.value = true
+function getImageUrl(page: { image_asset_id: string | null }) {
+  if (!page.image_asset_id) return null
+  return storiesStore.imageUrls[page.image_asset_id] ?? null
 }
 
-function closeLightbox() {
-  lightboxOpen.value = false
+function getAudioUrl(page: { audio_asset_id: string | null }) {
+  if (!page.audio_asset_id) return null
+  return storiesStore.audioUrls[page.audio_asset_id] ?? null
 }
 
-function lightboxPrev() {
-  if (lightboxIndex.value > 0) lightboxIndex.value--
+const {
+  activeLineIndex,
+  audioControlsExpanded,
+  audioCurrentTimeSeconds,
+  audioDurationSeconds,
+  audioPlaybackRate,
+  audioPlaying,
+  autoplayAvailable,
+  autoplayBlockedReason,
+  autoplayRunning,
+  bindAudioElement,
+  closeAudioControls,
+  currentNarrationLine,
+  currentNarrationLines,
+  currentPage,
+  currentPageIndex,
+  goToPage,
+  isCurrentTranscriptExpanded,
+  resetReader,
+  seekAudio,
+  setAudioPlaybackRate,
+  setViewMode,
+  toggleAudioControls,
+  toggleAudioPlayback,
+  toggleAutoplayPlayback,
+  toggleCurrentTranscript,
+  viewMode,
+} = useStoryReader(sortedPages, getAudioUrl)
+
+const currentPageAudioUrl = computed(() => (
+  currentPage.value ? getAudioUrl(currentPage.value) : null
+))
+const currentPageImageUrl = computed(() => (
+  currentPage.value ? getImageUrl(currentPage.value) : null
+))
+const currentLineLabel = computed(() => {
+  if (currentNarrationLines.value.length === 0) return 'Narration line'
+  return `Narration line ${Math.min(activeLineIndex.value + 1, currentNarrationLines.value.length)} of ${currentNarrationLines.value.length}`
+})
+const showFullTextToggle = computed(() => (
+  currentNarrationLines.value.length > 1 && viewMode.value !== 'autoplay'
+))
+const autoplayHint = computed(() => (
+  hasNarration.value ? autoplayBlockedReason.value : null
+))
+const isMobileViewport = computed(() => viewportWidth.value < 768)
+const immersiveAutoplay = computed(() => (
+  viewMode.value === 'autoplay' && isMobileViewport.value
+))
+const showReaderPagination = computed(() => !immersiveAutoplay.value)
+const showReaderStageMeta = computed(() => !immersiveAutoplay.value)
+const showOverlayAudioControl = computed(() => Boolean(currentPageAudioUrl.value))
+const audioSpeedOptions = [1, 1.25, 1.5]
+
+function retryableOutputs(page: { retryable_outputs?: Array<'image' | 'audio'> }) {
+  return page.retryable_outputs ?? []
 }
 
-function lightboxNext() {
-  if (lightboxIndex.value < pagesWithImages.value.length - 1) lightboxIndex.value++
+function pageOutputError(page: { output_errors?: Partial<Record<'image' | 'audio', string>> }, output: 'image' | 'audio') {
+  return page.output_errors?.[output] ?? null
 }
 
-function handleLightboxKeydown(e: KeyboardEvent) {
-  if (!lightboxOpen.value) return
-  if (e.key === 'Escape') closeLightbox()
-  if (e.key === 'ArrowLeft') lightboxPrev()
-  if (e.key === 'ArrowRight') lightboxNext()
+function pageRetryLabel(page: { retryable_outputs?: Array<'image' | 'audio'> }) {
+  const outputs = retryableOutputs(page)
+  if (outputs.length > 1) return 'Retry missing parts'
+  if (outputs[0] === 'audio') return 'Retry narration'
+  return 'Retry page illustration'
 }
 
-// Book navigation
-function goToPage(index: number) {
-  if (index >= 0 && index < totalPages.value) {
-    currentPageIndex.value = index
-  }
+function isRetryingPage(pageId: string) {
+  return retryingPageId.value === pageId
 }
 
-// Parallax
-const parallaxElements = ref<HTMLElement[]>([])
-
-function handleScroll() {
-  if (window.innerWidth < 1024) return
-  requestAnimationFrame(() => {
-    for (const el of parallaxElements.value) {
-      if (!el) continue
-      const rect = el.getBoundingClientRect()
-      const viewportCenter = window.innerHeight / 2
-      const elementCenter = rect.top + rect.height / 2
-      const offset = (elementCenter - viewportCenter) * -0.08
-      el.style.transform = `translateY(${offset}px)`
-    }
-  })
+function showNarrationPending(page: { status: string; audio_asset_id: string | null }) {
+  return hasNarration.value && !page.audio_asset_id && page.status === 'image_ready'
 }
 
-function setParallaxRef(el: any, index: number) {
-  if (el) parallaxElements.value[index] = el
+function showNarrationLoading(page: { audio_asset_id: string | null }) {
+  return Boolean(page.audio_asset_id && !getAudioUrl(page))
 }
 
 function statusTone(status: string) {
@@ -198,16 +229,6 @@ function formatDate(value: string | null | undefined) {
   })
 }
 
-function getImageUrl(page: { image_asset_id: string | null }) {
-  if (!page.image_asset_id) return null
-  return storiesStore.imageUrls[page.image_asset_id] ?? null
-}
-
-function getAudioUrl(page: { audio_asset_id: string | null }) {
-  if (!page.audio_asset_id) return null
-  return storiesStore.audioUrls[page.audio_asset_id] ?? null
-}
-
 function formatDuration(durationMs: number | null) {
   if (!durationMs || durationMs <= 0) return 'Length available after playback'
 
@@ -219,31 +240,111 @@ function formatDuration(durationMs: number | null) {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`
 }
 
-function retryableOutputs(page: { retryable_outputs?: Array<'image' | 'audio'> }) {
-  return page.retryable_outputs ?? []
+function formatPlaybackTime(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return '0:00'
+
+  const roundedSeconds = Math.floor(seconds)
+  const minutes = Math.floor(roundedSeconds / 60)
+  const remainder = roundedSeconds % 60
+  return `${minutes}:${remainder.toString().padStart(2, '0')}`
 }
 
-function pageOutputError(page: { output_errors?: Partial<Record<'image' | 'audio', string>> }, output: 'image' | 'audio') {
-  return page.output_errors?.[output] ?? null
+function openLightbox(pageIndex: number) {
+  const page = sortedPages.value[pageIndex]
+  if (!page?.image_asset_id || !storiesStore.imageUrls[page.image_asset_id]) return
+  lightboxIndex.value = pagesWithImages.value.findIndex((entry) => entry.id === page.id)
+  if (lightboxIndex.value === -1) return
+  lightboxOpen.value = true
 }
 
-function pageRetryLabel(page: { retryable_outputs?: Array<'image' | 'audio'> }) {
-  const outputs = retryableOutputs(page)
-  if (outputs.length > 1) return 'Retry missing parts'
-  if (outputs[0] === 'audio') return 'Retry narration'
-  return 'Retry page illustration'
+function closeLightbox() {
+  lightboxOpen.value = false
 }
 
-function isRetryingPage(pageId: string) {
-  return retryingPageId.value === pageId
+function lightboxPrev() {
+  if (lightboxIndex.value > 0) lightboxIndex.value -= 1
 }
 
-function showNarrationPending(page: { status: string; audio_asset_id: string | null }) {
-  return hasNarration.value && !page.audio_asset_id && page.status === 'image_ready'
+function lightboxNext() {
+  if (lightboxIndex.value < pagesWithImages.value.length - 1) lightboxIndex.value += 1
 }
 
-function showNarrationLoading(page: { audio_asset_id: string | null }) {
-  return Boolean(page.audio_asset_id && !getAudioUrl(page))
+function handleLightboxKeydown(event: KeyboardEvent) {
+  if (!lightboxOpen.value) return
+  if (event.key === 'Escape') closeLightbox()
+  if (event.key === 'ArrowLeft') lightboxPrev()
+  if (event.key === 'ArrowRight') lightboxNext()
+}
+
+function handleScroll() {
+  if (window.innerWidth < 1024) return
+
+  requestAnimationFrame(() => {
+    for (const element of parallaxElements.value) {
+      if (!element) continue
+      const rect = element.getBoundingClientRect()
+      const viewportCenter = window.innerHeight / 2
+      const elementCenter = rect.top + rect.height / 2
+      const offset = (elementCenter - viewportCenter) * -0.08
+      element.style.transform = `translateY(${offset}px)`
+    }
+  })
+}
+
+function handleResize() {
+  viewportWidth.value = window.innerWidth
+}
+
+function resolveTemplateElement(element: Element | ComponentPublicInstance | null) {
+  if (element instanceof Element) return element
+  if (element && '$el' in element && element.$el instanceof Element) return element.$el
+  return null
+}
+
+function setParallaxRef(element: Element | ComponentPublicInstance | null, index: number) {
+  const resolvedElement = resolveTemplateElement(element)
+  if (resolvedElement instanceof HTMLElement) {
+    parallaxElements.value[index] = resolvedElement
+  }
+}
+
+function bindReaderAudioRef(element: Element | ComponentPublicInstance | null) {
+  const resolvedElement = resolveTemplateElement(element)
+  bindAudioElement(resolvedElement instanceof HTMLAudioElement ? resolvedElement : null)
+}
+
+function goToPreviousPage() {
+  goToPage(currentPageIndex.value - 1)
+}
+
+function goToNextPage() {
+  goToPage(currentPageIndex.value + 1)
+}
+
+function switchViewMode(mode: 'grid' | 'book' | 'autoplay') {
+  setViewMode(mode)
+}
+
+function exitImmersiveAutoplay() {
+  switchViewMode('book')
+}
+
+function handleAudioSeekInput(event: Event) {
+  const target = event.target as HTMLInputElement | null
+  if (!target) return
+
+  const nextTime = Number.parseFloat(target.value)
+  if (Number.isNaN(nextTime)) return
+  seekAudio(nextTime)
+}
+
+function toggleOverlayPlayback() {
+  if (viewMode.value === 'autoplay') {
+    toggleAutoplayPlayback()
+    return
+  }
+
+  toggleAudioPlayback()
 }
 
 async function loadStory(nextStoryId: string) {
@@ -306,15 +407,21 @@ async function confirmDelete() {
 watch(
   storyId,
   (nextStoryId, previousStoryId) => {
+    resetReader()
     if (previousStoryId) storiesStore.stopGenerationPolling(previousStoryId)
     if (nextStoryId) loadStory(nextStoryId)
   },
   { immediate: true },
 )
 
+watch(immersiveAutoplay, () => {
+  closeAudioControls()
+})
+
 onMounted(() => {
   window.addEventListener('keydown', handleLightboxKeydown)
   window.addEventListener('scroll', handleScroll, { passive: true })
+  window.addEventListener('resize', handleResize)
 })
 
 onBeforeUnmount(() => {
@@ -324,13 +431,13 @@ onBeforeUnmount(() => {
 onUnmounted(() => {
   window.removeEventListener('keydown', handleLightboxKeydown)
   window.removeEventListener('scroll', handleScroll)
+  window.removeEventListener('resize', handleResize)
 })
 </script>
 
 <template>
   <main class="min-h-screen px-4 py-6 sm:px-6 sm:py-8">
     <div class="app-shell space-y-6">
-      <!-- Header -->
       <div class="page-header">
         <div>
           <p class="page-kicker">Story</p>
@@ -345,7 +452,6 @@ onUnmounted(() => {
         <RouterLink :to="{ name: 'dashboard' }" class="nav-link">&larr; Dashboard</RouterLink>
       </div>
 
-      <!-- Error -->
       <div
         v-if="storiesStore.error"
         class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
@@ -355,7 +461,6 @@ onUnmounted(() => {
       </div>
 
       <section v-if="story" class="surface-card px-6 py-6 sm:px-8">
-        <!-- Story metadata row -->
         <div class="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p class="page-kicker">Overview</p>
@@ -368,7 +473,6 @@ onUnmounted(() => {
           </div>
 
           <div class="flex flex-wrap items-center gap-3">
-            <!-- Progress ring (during generation with pages) -->
             <div
               v-if="isGenerating && totalPages > 0"
               class="progress-ring-container"
@@ -422,7 +526,6 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- Error message -->
         <div
           v-if="story.latest_error_message"
           class="mt-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
@@ -430,7 +533,6 @@ onUnmounted(() => {
           {{ story.latest_error_message }}
         </div>
 
-        <!-- Generating placeholder (no pages yet) -->
         <div v-if="isGenerating && totalPages === 0" class="mt-8 space-y-5">
           <div class="surface-card-muted px-5 py-5">
             <div class="generating-animation">
@@ -458,34 +560,52 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- Pages with content -->
         <div v-else-if="sortedPages.length > 0" class="mt-8">
-          <!-- View mode toggle -->
-          <div class="mb-6 flex items-center justify-between">
-            <p class="text-sm font-semibold text-[var(--app-muted)]">
-              {{ progressSummary }}
-            </p>
-            <div class="flex gap-1 rounded-full border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-0.5">
+          <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p class="text-sm font-semibold text-[var(--app-muted)]">
+                {{ progressSummary }}
+              </p>
+              <p
+                v-if="hasNarration && autoplayHint"
+                class="mt-1 text-xs leading-5 text-[var(--app-muted-soft)]"
+                data-testid="reader-autoplay-hint"
+              >
+                {{ autoplayHint }}
+              </p>
+            </div>
+            <div class="reader-mode-toggle">
               <button
                 type="button"
-                class="rounded-full px-3 py-1 text-xs font-semibold transition"
-                :class="viewMode === 'grid' ? 'bg-[var(--app-surface-strong)] text-[var(--app-ink)] shadow-sm' : 'text-[var(--app-muted)]'"
-                @click="viewMode = 'grid'"
+                class="reader-mode-toggle__button"
+                :class="{ 'reader-mode-toggle__button--active': viewMode === 'grid' }"
+                @click="switchViewMode('grid')"
               >
                 All pages
               </button>
               <button
                 type="button"
-                class="rounded-full px-3 py-1 text-xs font-semibold transition"
-                :class="viewMode === 'book' ? 'bg-[var(--app-surface-strong)] text-[var(--app-ink)] shadow-sm' : 'text-[var(--app-muted)]'"
-                @click="viewMode = 'book'"
+                class="reader-mode-toggle__button"
+                :class="{ 'reader-mode-toggle__button--active': viewMode === 'book' }"
+                @click="switchViewMode('book')"
               >
                 Book view
+              </button>
+              <button
+                v-if="hasNarration"
+                type="button"
+                class="reader-mode-toggle__button"
+                :class="{ 'reader-mode-toggle__button--active': viewMode === 'autoplay' }"
+                :disabled="!autoplayAvailable"
+                :title="autoplayHint ?? undefined"
+                data-testid="reader-autoplay-toggle"
+                @click="switchViewMode('autoplay')"
+              >
+                Autoplay
               </button>
             </div>
           </div>
 
-          <!-- Grid view -->
           <div v-if="viewMode === 'grid'" class="space-y-6">
             <article
               v-for="(page, index) in sortedPages"
@@ -493,9 +613,7 @@ onUnmounted(() => {
               class="story-spread"
               :class="{ 'story-spread--flipped': page.page_number % 2 === 0 }"
             >
-              <!-- Image card -->
               <div class="story-image-card-wrapper">
-                <!-- Generating shimmer -->
                 <div
                   v-if="page.status === 'text_ready' && !getImageUrl(page)"
                   class="story-image-card story-image-card--loading"
@@ -503,7 +621,6 @@ onUnmounted(() => {
                   <span class="story-image-card__shimmer-label">Illustrating<span class="animate-dots" /></span>
                 </div>
 
-                <!-- Ready image -->
                 <div
                   v-else-if="getImageUrl(page)"
                   class="story-image-card story-image-card--ready"
@@ -513,11 +630,10 @@ onUnmounted(() => {
                     :src="getImageUrl(page)!"
                     :alt="`Illustration for page ${page.page_number}`"
                     class="story-image-card__img"
-                    :ref="(el) => setParallaxRef(el as HTMLElement, index)"
+                    :ref="(element) => setParallaxRef(element, index)"
                   />
                 </div>
 
-                <!-- Failed -->
                 <div
                   v-else-if="page.status === 'failed'"
                   class="story-image-card story-image-card--failed"
@@ -537,13 +653,11 @@ onUnmounted(() => {
                   </button>
                 </div>
 
-                <!-- Pending / other -->
                 <div v-else class="story-image-card story-image-card--loading">
                   <span class="text-sm text-[var(--app-muted)]">Waiting…</span>
                 </div>
               </div>
 
-              <!-- Text content -->
               <div class="story-spread__text">
                 <div class="flex items-center justify-between gap-3">
                   <p class="page-kicker">Page {{ page.page_number }}</p>
@@ -625,31 +739,56 @@ onUnmounted(() => {
             </article>
           </div>
 
-          <!-- Book view (one page at a time) -->
           <div v-else class="relative">
             <Transition name="page-slide" mode="out-in">
-              <article :key="currentPage?.id" class="story-spread">
-                <div class="story-image-card-wrapper">
+              <article
+                :key="currentPage?.id"
+                class="story-reader"
+                :class="{ 'story-reader--immersive': immersiveAutoplay }"
+              >
+                <div class="story-reader__stage">
                   <div
-                    v-if="currentPage?.status === 'text_ready' && !getImageUrl(currentPage)"
-                    class="story-image-card story-image-card--loading"
+                    v-if="showReaderStageMeta"
+                    class="story-reader__stage-meta"
+                  >
+                    <p class="page-kicker" data-testid="reader-current-page">Page {{ currentPage?.page_number }}</p>
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span
+                        v-if="currentPage"
+                        class="status-pill"
+                        :class="pageStatusTone(currentPage.status)"
+                      >
+                        {{ pageStatusLabel(currentPage.status) }}
+                      </span>
+                      <span
+                        v-if="viewMode === 'autoplay'"
+                        class="status-pill bg-[var(--app-accent-soft)] text-[var(--app-accent-strong)]"
+                      >
+                        Autoplay
+                      </span>
+                    </div>
+                  </div>
+
+                  <div
+                    v-if="currentPage?.status === 'text_ready' && !currentPageImageUrl"
+                    class="story-image-card story-image-card--loading story-reader__image-card"
                   >
                     <span class="story-image-card__shimmer-label">Illustrating<span class="animate-dots" /></span>
                   </div>
                   <div
-                    v-else-if="currentPage && getImageUrl(currentPage)"
-                    class="story-image-card story-image-card--ready"
+                    v-else-if="currentPage && currentPageImageUrl"
+                    class="story-image-card story-image-card--ready story-reader__image-card"
                     @click="openLightbox(currentPageIndex)"
                   >
                     <img
-                      :src="getImageUrl(currentPage)!"
+                      :src="currentPageImageUrl"
                       :alt="`Illustration for page ${currentPage.page_number}`"
                       class="story-image-card__img"
                     />
                   </div>
                   <div
                     v-else-if="currentPage?.status === 'failed'"
-                    class="story-image-card story-image-card--failed"
+                    class="story-image-card story-image-card--failed story-reader__image-card"
                   >
                     <p class="text-sm font-semibold text-[var(--app-danger)]">Image generation failed</p>
                     <p
@@ -668,26 +807,179 @@ onUnmounted(() => {
                       {{ isRetryingPage(currentPage.id) ? 'Retrying…' : pageRetryLabel(currentPage) }}
                     </button>
                   </div>
-                  <div v-else class="story-image-card story-image-card--loading">
+                  <div v-else class="story-image-card story-image-card--loading story-reader__image-card">
                     <span class="text-sm text-[var(--app-muted)]">Waiting…</span>
+                  </div>
+
+                  <div
+                    v-if="immersiveAutoplay"
+                    class="story-reader__immersive-topbar"
+                  >
+                    <button
+                      type="button"
+                      class="story-reader__immersive-exit"
+                      data-testid="reader-exit-autoplay"
+                      @click="exitImmersiveAutoplay"
+                    >
+                      Exit autoplay
+                    </button>
+                  </div>
+
+                  <div
+                    v-if="showOverlayAudioControl"
+                    class="story-reader__audio-overlay"
+                    @click.stop
+                  >
+                    <button
+                      type="button"
+                      class="story-reader__audio-fab"
+                      data-testid="reader-audio-overlay-toggle"
+                      @click.stop="toggleAudioControls"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true" class="story-reader__audio-fab-icon">
+                        <path
+                          d="M5 9.5V14.5H8.5L13 19V5L8.5 9.5H5Z"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="1.8"
+                        />
+                        <path
+                          d="M16 9.5C17.3333 10.6667 17.3333 13.3333 16 14.5"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="1.8"
+                        />
+                        <path
+                          d="M18.75 7.25C21.4167 9.75 21.4167 14.25 18.75 16.75"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="1.8"
+                        />
+                      </svg>
+                    </button>
+
+                    <div
+                      v-if="audioControlsExpanded"
+                      class="story-reader__audio-popover"
+                      data-testid="reader-audio-popover"
+                    >
+                      <div class="story-reader__audio-popover-header">
+                        <button
+                          type="button"
+                          class="secondary-button"
+                          data-testid="reader-overlay-playback-toggle"
+                          @click="toggleOverlayPlayback"
+                        >
+                          {{
+                            audioPlaying
+                              ? viewMode === 'autoplay' ? 'Pause autoplay' : 'Pause audio'
+                              : viewMode === 'autoplay' ? 'Play autoplay' : 'Play audio'
+                          }}
+                        </button>
+                        <span class="text-xs font-semibold text-[var(--app-muted)]">
+                          {{ formatPlaybackTime(audioCurrentTimeSeconds) }} / {{ formatPlaybackTime(audioDurationSeconds) }}
+                        </span>
+                      </div>
+
+                      <input
+                        type="range"
+                        min="0"
+                        :max="Math.max(audioDurationSeconds, 1)"
+                        step="0.1"
+                        :value="audioCurrentTimeSeconds"
+                        class="story-reader__audio-slider"
+                        data-testid="reader-audio-slider"
+                        @input="handleAudioSeekInput"
+                      >
+
+                      <div class="story-reader__audio-speed-row">
+                        <span class="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--app-muted-soft)]">Speed</span>
+                        <div class="story-reader__audio-speed-buttons">
+                          <button
+                            v-for="speed in audioSpeedOptions"
+                            :key="speed"
+                            type="button"
+                            class="story-reader__speed-button"
+                            :class="{ 'story-reader__speed-button--active': audioPlaybackRate === speed }"
+                            @click="setAudioPlaybackRate(speed)"
+                          >
+                            {{ speed }}x
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <audio
+                      v-if="currentPageAudioUrl"
+                      :ref="bindReaderAudioRef"
+                      :src="currentPageAudioUrl"
+                      preload="metadata"
+                      class="hidden"
+                    />
                   </div>
                 </div>
 
-                <div class="story-spread__text">
-                  <p class="page-kicker">Page {{ currentPage?.page_number }}</p>
-                  <span
-                    v-if="currentPage"
-                    class="status-pill mt-3 inline-flex"
-                    :class="pageStatusTone(currentPage.status)"
-                  >
-                    {{ pageStatusLabel(currentPage.status) }}
-                  </span>
-                  <p class="story-page-text mt-4 text-[var(--app-ink)]">
-                    {{ currentPage?.text_content }}
-                  </p>
+                <div
+                  class="story-reader__panel"
+                  :class="{ 'story-reader__panel--immersive': immersiveAutoplay }"
+                >
+                  <div class="story-reader__line-card">
+                    <p class="story-reader__line-label">
+                      {{ currentLineLabel }}
+                    </p>
+                    <p
+                      class="story-reader__line"
+                      data-testid="reader-line"
+                    >
+                      {{ currentNarrationLine || currentPage?.text_content || 'Narration text will appear here once the page is ready.' }}
+                    </p>
+                    <button
+                      v-if="showFullTextToggle"
+                      type="button"
+                      class="text-button story-reader__toggle"
+                      data-testid="reader-full-text-toggle"
+                      @click="toggleCurrentTranscript"
+                    >
+                      {{ isCurrentTranscriptExpanded ? 'Hide full text' : 'View full text' }}
+                    </button>
+
+                    <div
+                      v-if="isCurrentTranscriptExpanded"
+                      class="story-reader__transcript"
+                    >
+                      <p
+                        v-for="(line, index) in currentNarrationLines"
+                        :key="`${currentPage?.id ?? 'page'}-${index}`"
+                        class="story-reader__transcript-line"
+                        :class="{ 'story-reader__transcript-line--active': index === activeLineIndex }"
+                      >
+                        {{ line }}
+                      </p>
+                    </div>
+                  </div>
 
                   <div
-                    v-if="currentPage && retryableOutputs(currentPage).includes('image') && !getImageUrl(currentPage)"
+                    v-if="currentPage && showNarrationLoading(currentPage) && !immersiveAutoplay"
+                    class="story-reader__audio-status"
+                  >
+                    Loading narration…
+                  </div>
+
+                  <div
+                    v-else-if="currentPage && showNarrationPending(currentPage) && !immersiveAutoplay"
+                    class="story-reader__audio-status"
+                  >
+                    Narrating this page now…
+                  </div>
+
+                  <div
+                    v-if="currentPage && retryableOutputs(currentPage).includes('image') && !currentPageImageUrl"
                     class="mt-5 rounded-[1.5rem] border border-red-200 bg-red-50 px-4 py-4"
                   >
                     <div class="flex items-center justify-between gap-3">
@@ -703,32 +995,6 @@ onUnmounted(() => {
                     </div>
                     <p v-if="pageOutputError(currentPage, 'image')" class="mt-2 text-sm leading-6 text-[var(--app-danger)]">
                       {{ pageOutputError(currentPage, 'image') }}
-                    </p>
-                  </div>
-
-                  <div
-                    v-if="currentPage && (getAudioUrl(currentPage) || showNarrationPending(currentPage) || showNarrationLoading(currentPage))"
-                    class="mt-5 rounded-[1.5rem] border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-4 py-4"
-                  >
-                    <div class="flex items-center justify-between gap-3">
-                      <p class="text-sm font-semibold text-[var(--app-ink)]">Page narration</p>
-                      <p class="text-xs text-[var(--app-muted)]">{{ formatDuration(currentPage.duration_ms) }}</p>
-                    </div>
-
-                    <audio
-                      v-if="getAudioUrl(currentPage)"
-                      :src="getAudioUrl(currentPage)!"
-                      controls
-                      preload="none"
-                      class="mt-3 w-full"
-                    />
-
-                    <p v-else-if="showNarrationLoading(currentPage)" class="mt-3 text-sm text-[var(--app-muted)]">
-                      Loading narration…
-                    </p>
-
-                    <p v-else class="mt-3 text-sm text-[var(--app-muted)]">
-                      Narrating this page now…
                     </p>
                   </div>
 
@@ -755,12 +1021,15 @@ onUnmounted(() => {
               </article>
             </Transition>
 
-            <div class="mt-6 flex items-center justify-center gap-4">
+            <div
+              v-if="showReaderPagination"
+              class="story-reader__pagination"
+            >
               <button
                 type="button"
                 class="secondary-button"
                 :disabled="currentPageIndex === 0"
-                @click="goToPage(currentPageIndex - 1)"
+                @click="goToPreviousPage"
               >
                 &larr; Previous
               </button>
@@ -771,7 +1040,7 @@ onUnmounted(() => {
                 type="button"
                 class="secondary-button"
                 :disabled="currentPageIndex >= totalPages - 1"
-                @click="goToPage(currentPageIndex + 1)"
+                @click="goToNextPage"
               >
                 Next &rarr;
               </button>
@@ -779,7 +1048,6 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- Failed state (no pages) -->
         <div v-else-if="story.status === 'failed'" class="mt-8 empty-panel px-6 py-10 text-center">
           <p class="text-lg font-semibold text-[var(--app-ink)]">Story generation failed</p>
           <p class="mx-auto mt-3 max-w-xl text-sm leading-6 text-[var(--app-muted)]">
@@ -790,7 +1058,6 @@ onUnmounted(() => {
     </div>
   </main>
 
-  <!-- Lightbox -->
   <Teleport to="body">
     <Transition name="lightbox">
       <div
