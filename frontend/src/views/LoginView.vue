@@ -103,15 +103,7 @@ onMounted(() => {
             Sign in to manage child profiles, save narration voices, and pick up where bedtime left off.
           </p>
 
-          <div class="mt-8 grid gap-3 sm:grid-cols-2">
-            <div class="dashboard-tile">
-              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--app-muted-soft)]">
-                Mobile first
-              </p>
-              <p class="mt-3 text-sm leading-6 text-[var(--app-muted)]">
-                Core flows stay focused, fast, and easy to use on a phone.
-              </p>
-            </div>
+          <div class="mt-8">
             <div class="dashboard-tile">
               <p class="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--app-muted-soft)]">
                 Private by default
@@ -151,7 +143,7 @@ onMounted(() => {
                 {{ linkError }}
               </p>
 
-              <div class="flex flex-col gap-3 sm:flex-row">
+              <div class="auth-actions sm:flex-row">
                 <button class="primary-button w-full" type="submit" :disabled="auth.isLoading.value">
                   {{ auth.isLoading.value ? 'Linking...' : 'Link accounts' }}
                 </button>
@@ -196,9 +188,11 @@ onMounted(() => {
                 {{ errorMessage }}
               </p>
 
-              <button class="primary-button w-full" type="submit" :disabled="auth.isLoading.value">
-                {{ auth.isLoading.value ? 'Signing in...' : 'Sign in' }}
-              </button>
+              <div class="auth-actions">
+                <button class="primary-button w-full" type="submit" :disabled="auth.isLoading.value">
+                  {{ auth.isLoading.value ? 'Signing in...' : 'Sign in' }}
+                </button>
+              </div>
             </form>
 
             <div class="my-7 flex items-center gap-4">

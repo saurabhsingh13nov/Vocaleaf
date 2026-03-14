@@ -126,7 +126,7 @@ onMounted(() => {
                 {{ linkError }}
               </p>
 
-              <div class="flex flex-col gap-3 sm:flex-row">
+              <div class="auth-actions sm:flex-row">
                 <button class="primary-button w-full" type="submit" :disabled="auth.isLoading.value">
                   {{ auth.isLoading.value ? 'Linking...' : 'Link accounts' }}
                 </button>
@@ -186,9 +186,11 @@ onMounted(() => {
                 {{ errorMessage }}
               </p>
 
-              <button class="primary-button w-full" type="submit" :disabled="auth.isLoading.value">
-                {{ auth.isLoading.value ? 'Creating account...' : 'Create account' }}
-              </button>
+              <div class="auth-actions">
+                <button class="primary-button w-full" type="submit" :disabled="auth.isLoading.value">
+                  {{ auth.isLoading.value ? 'Creating account...' : 'Create account' }}
+                </button>
+              </div>
             </form>
 
             <div class="my-7 flex items-center gap-4">

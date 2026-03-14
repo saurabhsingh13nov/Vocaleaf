@@ -235,7 +235,7 @@ describe('story views', () => {
     expect(wrapper.text()).toContain('Illustrating')
   })
 
-  it('renders recent stories on the dashboard', async () => {
+  it('renders a ready story as the dashboard hero', async () => {
     mockedGetStories.mockResolvedValue([
       {
         id: 'story-1',
@@ -263,9 +263,60 @@ describe('story views', () => {
     })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('New story')
-    expect(wrapper.text()).toContain('Recent stories')
+    expect(wrapper.text()).toContain('Welcome back, Parent')
     expect(wrapper.text()).toContain('Lantern Walk')
+    expect(wrapper.text()).toContain('Read story')
+    expect(wrapper.text()).toContain('Story setup')
+    expect(wrapper.text()).not.toContain('Cookie-backed auth')
+  })
+
+  it('prioritizes a generating story in the dashboard hero', async () => {
+    mockedGetStories.mockResolvedValue([
+      {
+        id: 'story-1',
+        child_id: 'child-1',
+        title: 'Moonlight Rescue',
+        theme: 'Adventure',
+        status: 'generating',
+        target_page_count: 6,
+        art_style: 'Dreamy',
+        latest_error_message: null,
+        created_at: '2026-03-13T20:00:00Z',
+        updated_at: '2026-03-13T20:05:00Z',
+      },
+      {
+        id: 'story-2',
+        child_id: 'child-1',
+        title: 'Lantern Walk',
+        theme: 'Bedtime',
+        status: 'ready',
+        target_page_count: 6,
+        art_style: 'Dreamy',
+        latest_error_message: null,
+        created_at: '2026-03-13T19:00:00Z',
+        updated_at: '2026-03-13T19:05:00Z',
+      },
+    ])
+
+    const wrapper = mount(DashboardView, {
+      global: {
+        stubs: {
+          RouterLink: {
+            template: '<a><slot /></a>',
+            props: ['to'],
+          },
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Moonlight Rescue')
+    expect(wrapper.get('[data-testid="dashboard-hero-primary"]').text()).toBe('Continue story')
+
+    await wrapper.get('[data-testid="dashboard-hero-primary"]').trigger('click')
+    await flushPromises()
+
+    expect(pushMock).toHaveBeenCalledWith({ name: 'story-detail', params: { storyId: 'story-1' } })
   })
 
   it('deletes a failed story from the dashboard after confirmation', async () => {

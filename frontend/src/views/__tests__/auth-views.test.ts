@@ -381,12 +381,14 @@ describe('auth views', () => {
         },
       },
     })
+    await flushPromises()
 
-    expect(wrapper.text()).toContain('Welcome, Parent Reader')
-    expect(wrapper.text()).toContain('parent@example.com')
-    expect(wrapper.text()).toContain('active')
+    expect(wrapper.text()).toContain('Welcome back, Parent')
+    expect(wrapper.text()).toContain('Create your first story')
+    expect(wrapper.text()).toContain('Story setup')
 
-    await wrapper.get('button').trigger('click')
+    const logoutButton = wrapper.get('button[aria-label="Log out"]')
+    await logoutButton.trigger('click')
     await flushPromises()
 
     expect(authState.logout).toHaveBeenCalledTimes(1)

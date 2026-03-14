@@ -14,22 +14,23 @@ const storiesStore = useStoriesStore()
 const deleteTarget = ref<StoryListItem | null>(null)
 const isDeleting = ref(false)
 
-// Thumbnail URLs for story list items: story_id → image URL
 const thumbnailUrls = ref<Record<string, string>>({})
 
 async function fetchThumbnailForStory(storyId: string) {
   if (thumbnailUrls.value[storyId]) return
+
   try {
     const story = await getStory(storyId)
     const firstPageWithImage = story.pages
       .sort((a, b) => a.page_number - b.page_number)
-      .find((p) => p.image_asset_id)
+      .find((page) => page.image_asset_id)
+
     if (firstPageWithImage?.image_asset_id) {
       const resp = await getAssetUrl(firstPageWithImage.image_asset_id)
       thumbnailUrls.value = { ...thumbnailUrls.value, [storyId]: resp.url }
     }
   } catch {
-    // Ignore — thumbnail is optional
+    // Ignore. A story can exist without a thumbnail.
   }
 }
 
@@ -46,19 +47,85 @@ watch(
 )
 
 const displayName = computed(() => auth.user.value?.full_name || 'Story Creator')
-const email = computed(() => auth.user.value?.primary_email || 'No email on file')
-const createdAt = computed(() => {
-  const created = auth.user.value?.created_at
+const firstName = computed(() => displayName.value.split(' ')[0] || 'Friend')
+const sortedStories = computed(() => (
+  [...storiesStore.stories].sort(
+    (left, right) => Date.parse(right.updated_at) - Date.parse(left.updated_at),
+  )
+))
+const latestGeneratingStory = computed(() => (
+  sortedStories.value.find((story) => story.status === 'generating') ?? null
+))
+const latestReadyStory = computed(() => (
+  sortedStories.value.find((story) => story.status === 'ready') ?? null
+))
+const latestFailedStory = computed(() => (
+  sortedStories.value.find((story) => story.status === 'failed') ?? null
+))
+const heroStory = computed(() => latestGeneratingStory.value ?? latestReadyStory.value ?? null)
+const heroStoryId = computed(() => heroStory.value?.id ?? null)
+const activityStories = computed(() => (
+  sortedStories.value.filter((story) => (
+    (story.status === 'generating' || story.status === 'failed')
+      && story.id !== heroStoryId.value
+  ))
+))
+const readyStories = computed(() => (
+  sortedStories.value.filter((story) => (
+    story.status === 'ready' && story.id !== heroStoryId.value
+  ))
+))
 
-  if (!created) {
-    return 'Unknown'
+function storyTitle(story: StoryListItem) {
+  return story.title || story.theme || 'Untitled Story'
+}
+
+const heroContent = computed(() => {
+  if (latestGeneratingStory.value) {
+    return {
+      kicker: 'Story in progress',
+      title: storyTitle(latestGeneratingStory.value),
+      body: 'Your newest story is coming together now. Open it any time to watch pages arrive and keep bedtime moving.',
+      primaryLabel: 'Continue story',
+      secondaryLabel: 'Create a new story',
+      story: latestGeneratingStory.value,
+      statusLabel: 'Creating now',
+    }
   }
 
-  return new Date(created).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  })
+  if (latestReadyStory.value) {
+    return {
+      kicker: 'Ready tonight',
+      title: storyTitle(latestReadyStory.value),
+      body: 'Your latest story is ready to read again. Reopen it now or start a brand-new adventure.',
+      primaryLabel: 'Read story',
+      secondaryLabel: 'Create a new story',
+      story: latestReadyStory.value,
+      statusLabel: 'Ready to read',
+    }
+  }
+
+  if (latestFailedStory.value) {
+    return {
+      kicker: 'Start the next story',
+      title: 'Ready for another adventure?',
+      body: 'You can start a fresh story right away. Any story that needs attention stays below so nothing gets lost.',
+      primaryLabel: 'Create a new story',
+      secondaryLabel: null,
+      story: null,
+      statusLabel: null,
+    }
+  }
+
+  return {
+    kicker: 'Start the next bedtime favorite',
+    title: 'Create your first story',
+    body: 'Pick a child, choose a theme, and let Vocaleaf begin a personalized story in the background right away.',
+    primaryLabel: 'Create your first story',
+    secondaryLabel: null,
+    story: null,
+    statusLabel: null,
+  }
 })
 
 onMounted(() => {
@@ -82,9 +149,52 @@ function statusTone(status: string) {
   }
 }
 
+function storyStatusLabel(status: string) {
+  switch (status) {
+    case 'generating':
+      return 'Creating now'
+    case 'ready':
+      return 'Ready to read'
+    case 'failed':
+      return 'Needs attention'
+    default:
+      return status
+  }
+}
+
+function storyActionLabel(status: string) {
+  switch (status) {
+    case 'generating':
+      return 'Continue story'
+    case 'ready':
+      return 'Read story'
+    case 'failed':
+      return 'Review story'
+    default:
+      return 'Open story'
+  }
+}
+
+function storyMeta(story: StoryListItem) {
+  return `${story.target_page_count ?? 0} pages · ${new Date(story.created_at).toLocaleDateString()}`
+}
+
+function storyErrorSummary(story: StoryListItem) {
+  if (story.status !== 'failed' || !story.latest_error_message) return null
+  return story.latest_error_message
+}
+
 async function handleLogout() {
   await auth.logout()
   await router.push({ name: 'login' })
+}
+
+async function openStory(storyId: string) {
+  await router.push({ name: 'story-detail', params: { storyId } })
+}
+
+async function openStoryCreate() {
+  await router.push({ name: 'story-create' })
 }
 
 function openDeleteModal(story: StoryListItem) {
@@ -115,151 +225,272 @@ async function confirmDelete() {
 
 <template>
   <main class="min-h-screen px-4 py-6 sm:px-6 sm:py-8">
-    <div class="app-shell space-y-6">
-      <section class="surface-card grid gap-5 px-6 py-7 sm:px-8 lg:grid-cols-[1.2fr_0.8fr] lg:px-10 lg:py-10">
+    <div class="app-shell space-y-5">
+      <header class="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p class="page-kicker">Dashboard</p>
-          <h1 class="page-title">Welcome, {{ displayName }}</h1>
-          <p class="page-subtitle">
-            This is the working home for your account. Manage profiles, prepare narration voices, and move toward story creation without losing your place.
-          </p>
+          <p class="page-kicker">Story home</p>
+          <h1 class="mt-3 text-4xl font-semibold text-[var(--app-ink)] sm:text-5xl">
+            Welcome back, {{ firstName }}
+          </h1>
         </div>
 
-        <div class="surface-card-muted p-5 sm:p-6">
-          <p class="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--app-muted-soft)]">
-            Account Snapshot
-          </p>
-          <dl class="mt-5 space-y-4 text-sm">
-            <div>
-              <dt class="text-[var(--app-muted)]">Email</dt>
-              <dd class="mt-1 font-semibold text-[var(--app-ink)]">{{ email }}</dd>
-            </div>
-            <div>
-              <dt class="text-[var(--app-muted)]">Status</dt>
-              <dd class="mt-1 font-semibold capitalize text-[var(--app-ink)]">
-                {{ auth.user.value?.status ?? 'unknown' }}
-              </dd>
-            </div>
-            <div>
-              <dt class="text-[var(--app-muted)]">Created</dt>
-              <dd class="mt-1 font-semibold text-[var(--app-ink)]">{{ createdAt }}</dd>
-            </div>
-          </dl>
+        <button
+          class="header-action-button"
+          type="button"
+          aria-label="Log out"
+          @click="handleLogout"
+        >
+          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6A2.25 2.25 0 0 0 5.25 5.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3-3-3-3m3 3H9" />
+          </svg>
+          <span>Log out</span>
+        </button>
+      </header>
 
-          <button class="primary-button mt-6 w-full sm:w-auto" type="button" @click="handleLogout">
-            Log out
-          </button>
-        </div>
-      </section>
-
-      <section class="dashboard-grid md:grid-cols-2 xl:grid-cols-4">
-        <RouterLink :to="{ name: 'story-create' }" class="dashboard-tile transition hover:-translate-y-0.5">
-          <p class="page-kicker">Create</p>
-          <h2 class="mt-3 text-2xl font-semibold text-[var(--app-ink)]">New story</h2>
-          <p class="mt-3 text-sm leading-6 text-[var(--app-muted)]">
-            Start a personalized story draft and let the background text worker build each page.
-          </p>
-        </RouterLink>
-
-        <RouterLink :to="{ name: 'children' }" class="dashboard-tile transition hover:-translate-y-0.5">
-          <p class="page-kicker">Profiles</p>
-          <h2 class="mt-3 text-2xl font-semibold text-[var(--app-ink)]">Child profiles</h2>
-          <p class="mt-3 text-sm leading-6 text-[var(--app-muted)]">
-            Create and update the details that will personalize story prompts later.
-          </p>
-        </RouterLink>
-
-        <RouterLink :to="{ name: 'voice-profiles' }" class="dashboard-tile transition hover:-translate-y-0.5">
-          <p class="page-kicker">Narration</p>
-          <h2 class="mt-3 text-2xl font-semibold text-[var(--app-ink)]">Voice profiles</h2>
-          <p class="mt-3 text-sm leading-6 text-[var(--app-muted)]">
-            Upload samples, trigger cloning, and prepare voices for page-by-page audio.
-          </p>
-        </RouterLink>
-
-        <article class="dashboard-tile">
-          <p class="page-kicker">Session</p>
-          <h2 class="mt-3 text-2xl font-semibold text-[var(--app-ink)]">Cookie-backed auth</h2>
-          <p class="mt-3 text-sm leading-6 text-[var(--app-muted)]">
-            Refreshing the page restores the current user from the backend without storing tokens in local app state.
-          </p>
-        </article>
-
-        <article class="dashboard-tile">
-          <p class="page-kicker">Pipeline</p>
-          <h2 class="mt-3 text-2xl font-semibold text-[var(--app-ink)]">Phase 10 live</h2>
-          <p class="mt-3 text-sm leading-6 text-[var(--app-muted)]">
-            Text + illustration generation active. Audio narration follows in phase 11.
-          </p>
-        </article>
-      </section>
-
-      <section class="surface-card px-6 py-6 sm:px-8">
-        <div class="flex flex-wrap items-center justify-between gap-3">
+      <section class="story-hub-hero surface-card px-6 py-6 sm:px-8">
+        <div class="story-hub-hero__content">
           <div>
-            <p class="page-kicker">Library</p>
-            <h2 class="mt-2 text-3xl font-semibold text-[var(--app-ink)]">Recent stories</h2>
+            <p class="page-kicker">{{ heroContent.kicker }}</p>
+            <h2 class="mt-3 text-4xl font-semibold text-[var(--app-ink)] sm:text-5xl">
+              {{ heroContent.title }}
+            </h2>
+            <p class="page-subtitle max-w-2xl">
+              {{ heroContent.body }}
+            </p>
           </div>
-          <RouterLink :to="{ name: 'story-create' }" class="nav-link">Create another</RouterLink>
-        </div>
 
-        <div v-if="storiesStore.isLoading && storiesStore.stories.length === 0" class="mt-6 text-sm text-[var(--app-muted)]">
-          Loading stories…
+          <div v-if="heroContent.story" class="story-hub-hero__meta">
+            <span class="status-pill" :class="statusTone(heroContent.story.status)">
+              {{ heroContent.statusLabel }}
+            </span>
+            <p class="text-sm leading-6 text-[var(--app-muted)]">
+              {{ storyMeta(heroContent.story) }}
+            </p>
+          </div>
+
+          <div class="story-hub-hero__actions">
+            <button
+              type="button"
+              class="primary-button w-full sm:w-auto"
+              data-testid="dashboard-hero-primary"
+              @click="heroContent.story ? openStory(heroContent.story.id) : openStoryCreate()"
+            >
+              {{ heroContent.primaryLabel }}
+            </button>
+            <button
+              v-if="heroContent.secondaryLabel"
+              type="button"
+              class="secondary-button w-full sm:w-auto"
+              data-testid="dashboard-hero-secondary"
+              @click="openStoryCreate"
+            >
+              {{ heroContent.secondaryLabel }}
+            </button>
+            <button
+              v-if="heroContent.story"
+              type="button"
+              class="story-delete-button"
+              aria-label="Delete story"
+              :disabled="storiesStore.isLoading"
+              @click="openDeleteModal(heroContent.story)"
+            >
+              <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 7.5h12m-9.75 0v-.75A2.25 2.25 0 0 1 10.5 4.5h3a2.25 2.25 0 0 1 2.25 2.25v.75m-8.25 0h9.75m-8.25 3v6.75a.75.75 0 0 0 .75.75h4.5a.75.75 0 0 0 .75-.75V10.5m-6 0h6" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         <div
-          v-else-if="storiesStore.stories.length === 0"
-          class="empty-panel mt-6 px-6 py-10 text-center"
+          class="story-hub-hero__art"
+          :class="{ 'story-hub-hero__art--ready': Boolean(heroContent.story && thumbnailUrls[heroContent.story.id]) }"
         >
-          <p class="text-base font-medium text-[var(--app-ink)]">No stories yet.</p>
-          <p class="mx-auto mt-3 max-w-md text-sm leading-6 text-[var(--app-muted)]">
-            Create the first story to see text generation progress and completed pages here.
-          </p>
+          <img
+            v-if="heroContent.story && thumbnailUrls[heroContent.story.id]"
+            :src="thumbnailUrls[heroContent.story.id]"
+            :alt="storyTitle(heroContent.story)"
+            class="story-hub-hero__image"
+          />
+          <div v-else class="story-hub-hero__placeholder">
+            <span class="story-hub-hero__placeholder-copy">
+              {{ heroContent.story ? storyStatusLabel(heroContent.story.status) : 'A new story begins here' }}
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <div
+        v-if="storiesStore.isLoading && storiesStore.stories.length === 0"
+        class="surface-card px-6 py-6 text-sm text-[var(--app-muted)] sm:px-8"
+      >
+        Loading your stories…
+      </div>
+
+      <section
+        v-if="activityStories.length > 0"
+        class="surface-card px-6 py-6 sm:px-8"
+      >
+        <div>
+          <p class="page-kicker">Story activity</p>
+          <h2 class="mt-2 text-3xl font-semibold text-[var(--app-ink)]">Keep going</h2>
         </div>
 
-        <div v-else class="mt-6 grid gap-4 md:grid-cols-2">
+        <div class="mt-6 space-y-4">
           <article
-            v-for="story in storiesStore.stories"
+            v-for="story in activityStories"
             :key="story.id"
-            class="surface-card-muted px-5 py-5"
+            class="story-summary-card"
           >
-            <div class="flex items-start gap-3">
+            <div class="story-summary-card__thumb">
               <img
                 v-if="thumbnailUrls[story.id]"
                 :src="thumbnailUrls[story.id]"
-                :alt="story.title || 'Story thumbnail'"
-                class="h-16 w-16 flex-shrink-0 rounded-xl object-cover shadow-sm"
+                :alt="storyTitle(story)"
+                class="story-summary-card__image"
               />
+              <div v-else class="story-summary-card__image story-summary-card__image--placeholder" />
+            </div>
 
-              <RouterLink
-                :to="{ name: 'story-detail', params: { storyId: story.id } }"
-                class="block min-w-0 flex-1 transition hover:-translate-y-0.5"
-              >
-                <p class="page-kicker">Story</p>
-                <h3 class="mt-2 text-2xl font-semibold text-[var(--app-ink)]">
-                  {{ story.title || story.theme || 'Untitled Story' }}
-                </h3>
-                <p class="mt-3 text-sm leading-6 text-[var(--app-muted)]">
-                  {{ story.target_page_count ?? 0 }} pages · {{ new Date(story.created_at).toLocaleDateString() }}
-                </p>
-              </RouterLink>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <p class="page-kicker">Story</p>
+                  <h3 class="mt-2 text-2xl font-semibold leading-tight text-[var(--app-ink)]">
+                    {{ storyTitle(story) }}
+                  </h3>
+                </div>
+                <span class="status-pill flex-shrink-0" :class="statusTone(story.status)">
+                  {{ storyStatusLabel(story.status) }}
+                </span>
+              </div>
 
-              <button
-                type="button"
-                class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-[var(--app-border)] bg-[var(--app-surface-strong)] text-[var(--app-muted)] transition hover:border-red-200 hover:bg-red-50 hover:text-[var(--app-danger)]"
-                aria-label="Delete story"
-                :disabled="storiesStore.isLoading"
-                @click.stop="openDeleteModal(story)"
+              <p class="mt-3 text-sm leading-6 text-[var(--app-muted)]">
+                {{ storyMeta(story) }}
+              </p>
+              <p
+                v-if="storyErrorSummary(story)"
+                class="mt-2 text-sm leading-6 text-[var(--app-danger)]"
               >
-                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M6 7.5h12m-9.75 0v-.75A2.25 2.25 0 0 1 10.5 4.5h3a2.25 2.25 0 0 1 2.25 2.25v.75m-8.25 0h9.75m-8.25 3v6.75a.75.75 0 0 0 .75.75h4.5a.75.75 0 0 0 .75-.75V10.5m-6 0h6" />
-                </svg>
-              </button>
-              <span class="status-pill flex-shrink-0" :class="statusTone(story.status)">
-                {{ story.status }}
-              </span>
+                {{ storyErrorSummary(story) }}
+              </p>
+
+              <div class="mt-5 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  class="primary-button"
+                  @click="openStory(story.id)"
+                >
+                  {{ storyActionLabel(story.status) }}
+                </button>
+                <button
+                  type="button"
+                  class="story-delete-button"
+                  aria-label="Delete story"
+                  :disabled="storiesStore.isLoading"
+                  @click="openDeleteModal(story)"
+                >
+                  <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 7.5h12m-9.75 0v-.75A2.25 2.25 0 0 1 10.5 4.5h3a2.25 2.25 0 0 1 2.25 2.25v.75m-8.25 0h9.75m-8.25 3v6.75a.75.75 0 0 0 .75.75h4.5a.75.75 0 0 0 .75-.75V10.5m-6 0h6" />
+                  </svg>
+                </button>
+              </div>
             </div>
           </article>
+        </div>
+      </section>
+
+      <section
+        v-if="readyStories.length > 0"
+        class="surface-card px-6 py-6 sm:px-8"
+      >
+        <div>
+          <p class="page-kicker">Library</p>
+          <h2 class="mt-2 text-3xl font-semibold text-[var(--app-ink)]">Your stories</h2>
+        </div>
+
+        <div class="mt-6 space-y-4">
+          <article
+            v-for="story in readyStories"
+            :key="story.id"
+            class="story-summary-card"
+          >
+            <div class="story-summary-card__thumb">
+              <img
+                v-if="thumbnailUrls[story.id]"
+                :src="thumbnailUrls[story.id]"
+                :alt="storyTitle(story)"
+                class="story-summary-card__image"
+              />
+              <div v-else class="story-summary-card__image story-summary-card__image--placeholder" />
+            </div>
+
+            <div class="min-w-0 flex-1">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <p class="page-kicker">Story</p>
+                  <h3 class="mt-2 text-2xl font-semibold leading-tight text-[var(--app-ink)]">
+                    {{ storyTitle(story) }}
+                  </h3>
+                </div>
+                <span class="status-pill flex-shrink-0" :class="statusTone(story.status)">
+                  {{ storyStatusLabel(story.status) }}
+                </span>
+              </div>
+
+              <p class="mt-3 text-sm leading-6 text-[var(--app-muted)]">
+                {{ storyMeta(story) }}
+              </p>
+
+              <div class="mt-5 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  class="primary-button"
+                  @click="openStory(story.id)"
+                >
+                  {{ storyActionLabel(story.status) }}
+                </button>
+                <button
+                  type="button"
+                  class="story-delete-button"
+                  aria-label="Delete story"
+                  :disabled="storiesStore.isLoading"
+                  @click="openDeleteModal(story)"
+                >
+                  <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 7.5h12m-9.75 0v-.75A2.25 2.25 0 0 1 10.5 4.5h3a2.25 2.25 0 0 1 2.25 2.25v.75m-8.25 0h9.75m-8.25 3v6.75a.75.75 0 0 0 .75.75h4.5a.75.75 0 0 0 .75-.75V10.5m-6 0h6" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="surface-card-muted px-6 py-6 sm:px-8">
+        <div>
+          <p class="page-kicker">Story setup</p>
+          <h2 class="mt-2 text-3xl font-semibold text-[var(--app-ink)]">Manage the details once</h2>
+          <p class="mt-3 max-w-2xl text-sm leading-6 text-[var(--app-muted)]">
+            Update child details or prepare narration voices whenever you need them. The rest of the dashboard stays focused on stories.
+          </p>
+        </div>
+
+        <div class="mt-6 grid gap-4 md:grid-cols-2">
+          <RouterLink :to="{ name: 'children' }" class="dashboard-tile transition hover:-translate-y-0.5">
+            <p class="page-kicker">Profiles</p>
+            <h3 class="mt-2 text-2xl font-semibold text-[var(--app-ink)]">Child profiles</h3>
+            <p class="mt-3 text-sm leading-6 text-[var(--app-muted)]">
+              Keep names, ages, and story preferences ready for the next story.
+            </p>
+          </RouterLink>
+
+          <RouterLink :to="{ name: 'voice-profiles' }" class="dashboard-tile transition hover:-translate-y-0.5">
+            <p class="page-kicker">Narration</p>
+            <h3 class="mt-2 text-2xl font-semibold text-[var(--app-ink)]">Voice profiles</h3>
+            <p class="mt-3 text-sm leading-6 text-[var(--app-muted)]">
+              Add or refine narration voices for page-by-page playback later.
+            </p>
+          </RouterLink>
         </div>
       </section>
     </div>

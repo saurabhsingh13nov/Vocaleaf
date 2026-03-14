@@ -275,14 +275,29 @@ function cloneButtonLabel(profile: VoiceProfile) {
             <li>Upload a few clean clips over time before triggering the clone.</li>
           </ul>
 
-          <div class="mt-6 rounded-[1.25rem] border border-[var(--app-border)] bg-[rgba(255,253,249,0.82)] px-4 py-4">
-            <p class="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--app-muted-soft)]">
-              Phase 8 flow
-            </p>
-            <p class="mt-3 text-sm leading-6 text-[var(--app-muted)]">
-              Upload samples first, then use <span class="font-semibold text-[var(--app-ink)]">Clone Voice</span> to start background processing. Status updates return to this screen automatically.
-            </p>
-          </div>
+          <ol class="voice-guidance-steps mt-7" aria-label="Voice setup steps">
+            <li class="voice-guidance-step">
+              <span class="voice-guidance-step__badge" aria-hidden="true">1</span>
+              <div>
+                <p class="voice-guidance-step__title">Record clearly</p>
+                <p class="voice-guidance-step__copy">Use a steady voice in a quiet room.</p>
+              </div>
+            </li>
+            <li class="voice-guidance-step">
+              <span class="voice-guidance-step__badge" aria-hidden="true">2</span>
+              <div>
+                <p class="voice-guidance-step__title">Add a few samples</p>
+                <p class="voice-guidance-step__copy">Upload several clean clips over time.</p>
+              </div>
+            </li>
+            <li class="voice-guidance-step">
+              <span class="voice-guidance-step__badge" aria-hidden="true">3</span>
+              <div>
+                <p class="voice-guidance-step__title">Clone when ready</p>
+                <p class="voice-guidance-step__copy">Start cloning once the profile sounds representative.</p>
+              </div>
+            </li>
+          </ol>
         </section>
       </section>
 

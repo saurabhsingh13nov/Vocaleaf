@@ -30,6 +30,7 @@ const sortedPages = computed(() => {
 })
 
 const totalPages = computed(() => sortedPages.value.length)
+const currentPage = computed(() => sortedPages.value[currentPageIndex.value] ?? null)
 const imagesReadyCount = computed(() =>
   sortedPages.value.filter((p) => p.image_asset_id).length
 )
@@ -450,27 +451,27 @@ onUnmounted(() => {
           <!-- Book view (one page at a time) -->
           <div v-else class="relative">
             <Transition name="page-slide" mode="out-in">
-              <article :key="sortedPages[currentPageIndex]?.id" class="story-spread">
+              <article :key="currentPage?.id" class="story-spread">
                 <div class="story-image-card-wrapper">
                   <div
-                    v-if="sortedPages[currentPageIndex]?.status === 'text_ready' && !getImageUrl(sortedPages[currentPageIndex])"
+                    v-if="currentPage?.status === 'text_ready' && !getImageUrl(currentPage)"
                     class="story-image-card story-image-card--loading"
                   >
                     <span class="story-image-card__shimmer-label">Illustrating<span class="animate-dots" /></span>
                   </div>
                   <div
-                    v-else-if="getImageUrl(sortedPages[currentPageIndex])"
+                    v-else-if="currentPage && getImageUrl(currentPage)"
                     class="story-image-card story-image-card--ready"
                     @click="openLightbox(currentPageIndex)"
                   >
                     <img
-                      :src="getImageUrl(sortedPages[currentPageIndex])!"
-                      :alt="`Illustration for page ${sortedPages[currentPageIndex].page_number}`"
+                      :src="getImageUrl(currentPage)!"
+                      :alt="`Illustration for page ${currentPage.page_number}`"
                       class="story-image-card__img"
                     />
                   </div>
                   <div
-                    v-else-if="sortedPages[currentPageIndex]?.status === 'failed'"
+                    v-else-if="currentPage?.status === 'failed'"
                     class="story-image-card story-image-card--failed"
                   >
                     <p class="text-sm font-semibold text-[var(--app-danger)]">Image generation failed</p>
@@ -481,9 +482,9 @@ onUnmounted(() => {
                 </div>
 
                 <div class="story-spread__text">
-                  <p class="page-kicker">Page {{ sortedPages[currentPageIndex]?.page_number }}</p>
+                  <p class="page-kicker">Page {{ currentPage?.page_number }}</p>
                   <p class="story-page-text mt-4 text-[var(--app-ink)]">
-                    {{ sortedPages[currentPageIndex]?.text_content }}
+                    {{ currentPage?.text_content }}
                   </p>
                 </div>
               </article>

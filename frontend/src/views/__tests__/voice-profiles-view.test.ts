@@ -81,6 +81,16 @@ describe('VoiceProfilesView', () => {
     expect(wrapper.text()).toContain('No voice profiles yet')
   })
 
+  it('renders the updated voice guidance steps', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Record clearly')
+    expect(wrapper.text()).toContain('Add a few samples')
+    expect(wrapper.text()).toContain('Clone when ready')
+    expect(wrapper.text()).not.toContain('Phase 8 flow')
+  })
+
   it('requires consent before creating a profile', async () => {
     const wrapper = mountView()
     await flushPromises()
