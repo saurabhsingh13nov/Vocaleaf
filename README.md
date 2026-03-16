@@ -11,6 +11,14 @@ Vocaleaf generates personalized children's storybooks with AI-written text, uniq
 
 ---
 
+## 🎬 Demo
+
+Demo video of the app
+
+https://github.com/user-attachments/assets/04c57812-82d0-4f03-bd2b-fefee297265c
+
+---
+
 ## 📸 Screenshots
 
 <table>
@@ -36,15 +44,8 @@ Vocaleaf generates personalized children's storybooks with AI-written text, uniq
   </tr>
 </table>
 
----
-
-## 🎬 Demo
-
-<!-- Replace PLACEHOLDER_URL below with the actual video URL from GitHub.
-     To get it: open any issue on this repo, drag-drop artifacts/Vocaleaf.mp4 into the comment box,
-     GitHub generates a URL like https://github.com/user-attachments/assets/abc123... — paste it below. -->
-
-https://github.com/user-attachments/assets/PLACEHOLDER
+<!-- To make the video work on GitHub: open an issue, drag-drop artifacts/Vocaleaf.mp4 into the comment box,
+     copy the generated URL (https://github.com/user-attachments/assets/...), and replace the URL above. -->
 
 ---
 
