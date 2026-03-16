@@ -278,21 +278,21 @@ function cloneButtonLabel(profile: VoiceProfile) {
           <ol class="voice-guidance-steps mt-7" aria-label="Voice setup steps">
             <li class="voice-guidance-step">
               <span class="voice-guidance-step__badge" aria-hidden="true">1</span>
-              <div>
+              <div class="voice-guidance-step__content">
                 <p class="voice-guidance-step__title">Record clearly</p>
                 <p class="voice-guidance-step__copy">Use a steady voice in a quiet room.</p>
               </div>
             </li>
             <li class="voice-guidance-step">
               <span class="voice-guidance-step__badge" aria-hidden="true">2</span>
-              <div>
+              <div class="voice-guidance-step__content">
                 <p class="voice-guidance-step__title">Add a few samples</p>
                 <p class="voice-guidance-step__copy">Upload several clean clips over time.</p>
               </div>
             </li>
             <li class="voice-guidance-step">
               <span class="voice-guidance-step__badge" aria-hidden="true">3</span>
-              <div>
+              <div class="voice-guidance-step__content">
                 <p class="voice-guidance-step__title">Clone when ready</p>
                 <p class="voice-guidance-step__copy">Start cloning once the profile sounds representative.</p>
               </div>
