@@ -30,6 +30,7 @@ from app.models.story import Story
 from app.models.story_generation_job import StoryGenerationJob
 from app.models.story_page import StoryPage
 from app.models.story_page_generation import StoryPageGeneration
+from app.services.usage import record_image_generated_usage
 from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -264,6 +265,13 @@ async def run_image_generation_in_session(
         completed_at=_utcnow_naive(),
     )
     db.add(page_generation)
+    record_image_generated_usage(
+        db,
+        user_id=story.user_id,
+        story_id=story.id,
+        story_page_id=page.id,
+        provider="google_gemini_image",
+    )
 
     page.image_asset_id = asset.id
     page.status = StoryPageStatus.COMPLETE if page.audio_asset_id else StoryPageStatus.IMAGE_READY

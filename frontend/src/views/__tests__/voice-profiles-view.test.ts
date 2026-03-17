@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 
 import VoiceProfilesView from '@/views/VoiceProfilesView.vue'
+import { getConsentStatus, acceptConsents } from '@/services/consents'
+import { getSubscriptionSummary } from '@/services/subscription'
 import {
   cloneVoiceProfile,
   createVoiceProfile,
@@ -38,12 +40,24 @@ vi.mock('@/services/voice', () => ({
   uploadVoiceSampleFile: vi.fn(),
 }))
 
+vi.mock('@/services/consents', () => ({
+  acceptConsents: vi.fn(),
+  getConsentStatus: vi.fn(),
+}))
+
+vi.mock('@/services/subscription', () => ({
+  getSubscriptionSummary: vi.fn(),
+}))
+
+const mockedAcceptConsents = vi.mocked(acceptConsents)
 const mockedCloneVoiceProfile = vi.mocked(cloneVoiceProfile)
+const mockedGetConsentStatus = vi.mocked(getConsentStatus)
 const mockedGetVoiceProfiles = vi.mocked(getVoiceProfiles)
 const mockedGetVoiceProfile = vi.mocked(getVoiceProfile)
 const mockedCreateVoiceProfile = vi.mocked(createVoiceProfile)
 const mockedDeleteVoiceProfile = vi.mocked(deleteVoiceProfile)
 const mockedDeleteVoiceSample = vi.mocked(deleteVoiceSample)
+const mockedGetSubscriptionSummary = vi.mocked(getSubscriptionSummary)
 
 describe('VoiceProfilesView', () => {
   function mountView() {
@@ -60,6 +74,83 @@ describe('VoiceProfilesView', () => {
     vi.clearAllMocks()
     document.body.innerHTML = ''
     setActivePinia(createPinia())
+    mockedAcceptConsents.mockResolvedValue({
+      items: [
+        {
+          consent_type: 'terms_of_service',
+          required_version: '2026-03-16',
+          accepted_version: '2026-03-16',
+          accepted_at: '2026-03-13T20:00:00Z',
+          is_current: true,
+        },
+        {
+          consent_type: 'privacy_policy',
+          required_version: '2026-03-16',
+          accepted_version: '2026-03-16',
+          accepted_at: '2026-03-13T20:00:00Z',
+          is_current: true,
+        },
+        {
+          consent_type: 'voice_cloning',
+          required_version: '2026-03-16',
+          accepted_version: '2026-03-16',
+          accepted_at: '2026-03-13T20:00:00Z',
+          is_current: true,
+        },
+      ],
+      requires_legal_consent: false,
+      has_voice_cloning_consent: true,
+    })
+    mockedGetConsentStatus.mockResolvedValue({
+      items: [
+        {
+          consent_type: 'terms_of_service',
+          required_version: '2026-03-16',
+          accepted_version: '2026-03-16',
+          accepted_at: '2026-03-13T20:00:00Z',
+          is_current: true,
+        },
+        {
+          consent_type: 'privacy_policy',
+          required_version: '2026-03-16',
+          accepted_version: '2026-03-16',
+          accepted_at: '2026-03-13T20:00:00Z',
+          is_current: true,
+        },
+        {
+          consent_type: 'voice_cloning',
+          required_version: '2026-03-16',
+          accepted_version: '2026-03-16',
+          accepted_at: '2026-03-13T20:00:00Z',
+          is_current: true,
+        },
+      ],
+      requires_legal_consent: false,
+      has_voice_cloning_consent: true,
+    })
+    mockedGetSubscriptionSummary.mockResolvedValue({
+      id: 'subscription-1',
+      status: 'active',
+      current_period_start: '2026-03-01T00:00:00Z',
+      current_period_end: '2026-03-31T00:00:00Z',
+      plan: {
+        id: 'plan-1',
+        code: 'free',
+        name: 'free',
+        monthly_story_limit: 3,
+        max_pages_per_story: 6,
+        image_quality_mode: 'standard',
+        voice_clone_limit: 1,
+        monthly_audio_chars_limit: 15000,
+        price_cents: 0,
+      },
+      usage: {
+        stories_created: { used: 0, limit: 3, remaining: 3, unit: 'story' },
+        voice_clones_created: { used: 0, limit: 1, remaining: 1, unit: 'voice_clone' },
+        audio_chars_synthesized: { used: 0, limit: 15000, remaining: 15000, unit: 'character' },
+        images_generated: { used: 0, limit: null, remaining: null, unit: 'page_image' },
+      },
+    })
     mockedGetVoiceProfiles.mockResolvedValue([])
     mockedGetVoiceProfile.mockResolvedValue({
       id: 'profile-1',
@@ -91,7 +182,19 @@ describe('VoiceProfilesView', () => {
     expect(wrapper.text()).not.toContain('Phase 8 flow')
   })
 
-  it('requires consent before creating a profile', async () => {
+  it('creates a profile without requiring consent first', async () => {
+    mockedCreateVoiceProfile.mockResolvedValue({
+      id: 'profile-1',
+      user_id: 'user-1',
+      display_name: 'Quiet Story Voice',
+      status: 'pending',
+      consent_confirmed: false,
+      default_for_user: false,
+      created_at: '2026-03-13T20:00:00Z',
+      updated_at: '2026-03-13T20:00:00Z',
+      samples: [],
+    })
+
     const wrapper = mountView()
     await flushPromises()
 
@@ -99,11 +202,14 @@ describe('VoiceProfilesView', () => {
     await wrapper.get('form').trigger('submit.prevent')
     await flushPromises()
 
-    expect(mockedCreateVoiceProfile).not.toHaveBeenCalled()
-    expect(wrapper.text()).toContain('Consent is required before creating a voice profile')
+    expect(mockedCreateVoiceProfile).toHaveBeenCalledWith({
+      display_name: 'Quiet Story Voice',
+      default_for_user: false,
+    })
+    expect(wrapper.text()).toContain('Quiet Story Voice')
   })
 
-  it('creates a profile when consent is checked', async () => {
+  it('creates a profile with default voice selection', async () => {
     mockedCreateVoiceProfile.mockResolvedValue({
       id: 'profile-1',
       user_id: 'user-1',
@@ -126,8 +232,7 @@ describe('VoiceProfilesView', () => {
 
     expect(mockedCreateVoiceProfile).toHaveBeenCalledWith({
       display_name: 'Quiet Story Voice',
-      consent_confirmed: true,
-      default_for_user: false,
+      default_for_user: true,
     })
     expect(wrapper.text()).toContain('Quiet Story Voice')
   })

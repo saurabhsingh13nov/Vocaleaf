@@ -32,6 +32,10 @@ class StoryPageResponse(BaseModel):
     status: StoryPageStatus
     image_asset_id: uuid.UUID | None
     audio_asset_id: uuid.UUID | None
+    image_url: str | None = None
+    image_url_expires_at: datetime | None = None
+    audio_url: str | None = None
+    audio_url_expires_at: datetime | None = None
     duration_ms: int | None
     retryable_outputs: list[str] = Field(default_factory=list)
     output_errors: dict[str, str] = Field(default_factory=dict)
@@ -66,6 +70,7 @@ class StoryResponse(BaseModel):
         story,
         *,
         latest_error_message: str | None = None,
+        asset_urls_by_id: dict[uuid.UUID, tuple[str, datetime]] | None = None,
     ) -> "StoryResponse":
         story_requires_narration = story.voice_profile_id is not None
         pages = [
@@ -73,6 +78,7 @@ class StoryResponse(BaseModel):
                 page,
                 story_requires_narration=story_requires_narration,
                 story_status=story.status,
+                asset_urls_by_id=asset_urls_by_id or {},
             )
             for page in sorted(list(story.pages), key=lambda page: page.page_number)
         ]
@@ -141,12 +147,15 @@ def _page_response_payload(
     *,
     story_requires_narration: bool,
     story_status: StoryStatus,
+    asset_urls_by_id: dict[uuid.UUID, tuple[str, datetime]],
 ) -> dict:
     retryable_outputs = _retryable_outputs_for_page(
         page,
         story_requires_narration=story_requires_narration,
         story_status=story_status,
     )
+    image_url, image_url_expires_at = _asset_url_payload(asset_urls_by_id, page.image_asset_id)
+    audio_url, audio_url_expires_at = _asset_url_payload(asset_urls_by_id, page.audio_asset_id)
     return {
         "id": page.id,
         "page_number": page.page_number,
@@ -156,6 +165,10 @@ def _page_response_payload(
         "status": page.status,
         "image_asset_id": page.image_asset_id,
         "audio_asset_id": page.audio_asset_id,
+        "image_url": image_url,
+        "image_url_expires_at": image_url_expires_at,
+        "audio_url": audio_url,
+        "audio_url_expires_at": audio_url_expires_at,
         "duration_ms": page.duration_ms,
         "retryable_outputs": retryable_outputs,
         "output_errors": _output_errors_for_page(page),
@@ -212,3 +225,12 @@ def _output_errors_for_page(page) -> dict[str, str]:
             errors[generation_type] = error_message
 
     return errors
+
+
+def _asset_url_payload(
+    asset_urls_by_id: dict[uuid.UUID, tuple[str, datetime]],
+    asset_id: uuid.UUID | None,
+) -> tuple[str | None, datetime | None]:
+    if asset_id is None:
+        return None, None
+    return asset_urls_by_id.get(asset_id, (None, None))

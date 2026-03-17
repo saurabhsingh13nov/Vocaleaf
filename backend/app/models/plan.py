@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 class Plan(UUIDPrimaryKeyMixin, Base):
     __tablename__ = "plans"
 
+    code: Mapped[str] = mapped_column(String(50), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(100))
     monthly_story_limit: Mapped[Optional[int]]
     max_pages_per_story: Mapped[Optional[int]]

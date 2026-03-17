@@ -1,4 +1,4 @@
-"""Smoke test: verify all 17 domain tables are registered in Base.metadata."""
+"""Smoke test: verify all domain tables are registered in Base.metadata."""
 
 from app.db.base import Base
 from app.models import (  # noqa: F401 — force registration
@@ -17,8 +17,11 @@ from app.models import (  # noqa: F401 — force registration
     Subscription,
     UsageRecord,
     User,
+    UserEntitlementOverride,
+    UserRole,
     VoiceProfile,
     VoiceSample,
+    UsageCreditGrant,
 )
 
 EXPECTED_TABLES = {
@@ -36,7 +39,10 @@ EXPECTED_TABLES = {
     "story_pages",
     "subscriptions",
     "usage_records",
+    "usage_credit_grants",
     "users",
+    "user_entitlement_overrides",
+    "user_roles",
     "voice_profiles",
     "voice_samples",
 }
@@ -49,6 +55,6 @@ def test_all_tables_registered():
 
 
 def test_table_count():
-    assert len(EXPECTED_TABLES) == 17
+    assert len(EXPECTED_TABLES) == 20
     registered = set(Base.metadata.tables.keys())
     assert EXPECTED_TABLES.issubset(registered)

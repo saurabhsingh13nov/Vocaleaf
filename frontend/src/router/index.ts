@@ -4,8 +4,10 @@ import ChildrenView from '@/views/ChildrenView.vue'
 import DashboardView from '@/views/DashboardView.vue'
 import LoginView from '@/views/LoginView.vue'
 import RegisterView from '@/views/RegisterView.vue'
+import AdminView from '@/views/AdminView.vue'
 import StoryCreateView from '@/views/StoryCreateView.vue'
 import StoryDetailView from '@/views/StoryDetailView.vue'
+import SubscriptionView from '@/views/SubscriptionView.vue'
 import VoiceProfilesView from '@/views/VoiceProfilesView.vue'
 import { useAuthStore } from '@/stores/auth'
 import { pinia } from '@/stores/pinia'
@@ -38,6 +40,15 @@ const router = createRouter({
       },
     },
     {
+      path: '/admin',
+      name: 'admin',
+      component: AdminView,
+      meta: {
+        requiresAuth: true,
+        requiresStaff: true,
+      },
+    },
+    {
       path: '/dashboard',
       name: 'dashboard',
       component: DashboardView,
@@ -57,6 +68,14 @@ const router = createRouter({
       path: '/voice-profiles',
       name: 'voice-profiles',
       component: VoiceProfilesView,
+      meta: {
+        requiresAuth: true,
+      },
+    },
+    {
+      path: '/subscription',
+      name: 'subscription',
+      component: SubscriptionView,
       meta: {
         requiresAuth: true,
       },
@@ -93,6 +112,10 @@ router.beforeEach(async (to) => {
 
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     return { name: 'login' }
+  }
+
+  if (to.meta.requiresStaff && !authStore.isElevated) {
+    return { name: 'dashboard' }
   }
 
   if (to.meta.guestOnly && authStore.isAuthenticated) {

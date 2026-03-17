@@ -14,6 +14,7 @@ import {
   type Story,
   type StoryListItem,
 } from '@/services/stories'
+import { useSubscriptionStore } from '@/stores/subscription'
 
 const STORY_POLL_INTERVAL_MS = 4000
 
@@ -49,6 +50,7 @@ function toListItem(story: Story): StoryListItem {
 }
 
 export const useStoriesStore = defineStore('stories', () => {
+  const subscriptionStore = useSubscriptionStore()
   const stories = ref<StoryListItem[]>([])
   const currentStory = ref<Story | null>(null)
   const isLoading = ref(false)
@@ -139,6 +141,7 @@ export const useStoriesStore = defineStore('stories', () => {
     try {
       const story = await createStoryRequest(payload)
       mergeStoryDetail(story)
+      subscriptionStore.fetchSummary().catch(() => undefined)
       if (story.status === 'generating') {
         scheduleGenerationPoll(story.id)
       }
@@ -236,6 +239,7 @@ export const useStoriesStore = defineStore('stories', () => {
           scheduleGenerationPoll(storyId)
           return
         }
+        subscriptionStore.fetchSummary().catch(() => undefined)
       } catch (e) {
         error.value = 'Failed to refresh story status.'
       }

@@ -10,6 +10,9 @@ from app.core.security import hash_password, password_needs_rehash, verify_passw
 from app.models.auth_identity import AuthIdentity
 from app.models.enums import AuthProvider, UserStatus
 from app.models.user import User
+from app.services.audit import record_audit_event
+from app.services.subscription import ensure_user_has_free_subscription
+from app.services.user_roles import ensure_seeded_user_roles
 
 
 class AuthError(Exception):
@@ -19,12 +22,31 @@ class AuthError(Exception):
         super().__init__(message)
 
 
+async def _initialize_new_user_account(
+    db: AsyncSession,
+    *,
+    user: User,
+    provider: AuthProvider,
+) -> None:
+    await ensure_user_has_free_subscription(db, user_id=user.id)
+    record_audit_event(
+        db,
+        user_id=user.id,
+        entity_type="user",
+        entity_id=user.id,
+        event_type="auth.registered",
+        event_data={"provider": provider.value},
+    )
+
+
 async def register_user(
     db: AsyncSession,
     email: str,
     password: str,
     full_name: str,
 ) -> User:
+    await ensure_seeded_user_roles(db)
+
     # Check for existing user by email
     existing = await db.execute(
         select(User).where(User.primary_email == email)
@@ -59,6 +81,7 @@ async def register_user(
         is_primary=True,
     )
     db.add(identity)
+    await _initialize_new_user_account(db, user=user, provider=AuthProvider.PASSWORD)
     await db.commit()
     await db.refresh(user)
     return user
@@ -114,68 +137,15 @@ async def authenticate_google_user(
     full_name: str | None,
     avatar_url: str | None,
 ) -> User:
-    """Find or create a user from a verified Google ID token.
-
-    Raises AuthError(409) if the email belongs to an existing password account.
-    """
-    # 1. Check for existing Google identity by (provider, sub)
-    result = await db.execute(
-        select(AuthIdentity).where(
-            AuthIdentity.provider == AuthProvider.GOOGLE,
-            AuthIdentity.provider_user_id == sub,
-        )
-    )
-    identity = result.scalar_one_or_none()
-
-    now = datetime.now(UTC).replace(tzinfo=None)
-
-    if identity:
-        # Returning Google user — update last login
-        user_result = await db.execute(
-            select(User).where(User.id == identity.user_id)
-        )
-        user = user_result.scalar_one()
-        identity.last_login_at = now
-        user.last_login_at = now
-        await db.commit()
-        await db.refresh(user)
-        return user
-
-    # 2. No Google identity — check for email conflict with existing user
-    existing_user = await db.execute(
-        select(User).where(User.primary_email == email)
-    )
-    if existing_user.scalar_one_or_none():
-        raise AuthError(
-            "Email already registered with a different method",
-            status_code=409,
-        )
-
-    # 3. Create new user + Google identity
-    user = User(
-        primary_email=email,
+    return await _authenticate_oauth_user(
+        db,
+        provider=AuthProvider.GOOGLE,
+        sub=sub,
+        email=email,
         full_name=full_name,
         avatar_url=avatar_url,
-        status=UserStatus.ACTIVE,
-        email_verified_at=now,
-        last_login_at=now,
+        email_verified=True,
     )
-    db.add(user)
-    await db.flush()
-
-    identity = AuthIdentity(
-        user_id=user.id,
-        provider=AuthProvider.GOOGLE,
-        provider_user_id=sub,
-        email=email,
-        password_hash=None,
-        is_primary=True,
-        is_verified=True,
-    )
-    db.add(identity)
-    await db.commit()
-    await db.refresh(user)
-    return user
 
 
 async def link_google_identity(
@@ -186,32 +156,47 @@ async def link_google_identity(
     name: str | None,
     avatar_url: str | None,
 ) -> User:
-    """Verify password ownership and attach a Google identity to the existing user."""
-    user = await authenticate_user(db, email, password)
-
-    # Idempotent: return if this Google identity is already linked
-    existing = await db.execute(
-        select(AuthIdentity).where(
-            AuthIdentity.provider == AuthProvider.GOOGLE,
-            AuthIdentity.provider_user_id == sub,
-        )
-    )
-    if existing.scalar_one_or_none():
-        return user
-
-    identity = AuthIdentity(
-        user_id=user.id,
+    del name, avatar_url
+    return await _link_oauth_identity(
+        db,
         provider=AuthProvider.GOOGLE,
-        provider_user_id=sub,
         email=email,
-        password_hash=None,
-        is_primary=False,
-        is_verified=True,
+        password=password,
+        sub=sub,
     )
-    db.add(identity)
-    await db.commit()
-    await db.refresh(user)
-    return user
+
+
+async def authenticate_apple_user(
+    db: AsyncSession,
+    sub: str,
+    email: str | None,
+    full_name: str | None,
+    email_verified: bool,
+) -> User:
+    return await _authenticate_oauth_user(
+        db,
+        provider=AuthProvider.APPLE,
+        sub=sub,
+        email=email,
+        full_name=full_name,
+        avatar_url=None,
+        email_verified=email_verified,
+    )
+
+
+async def link_apple_identity(
+    db: AsyncSession,
+    email: str | None,
+    password: str,
+    sub: str,
+) -> User:
+    return await _link_oauth_identity(
+        db,
+        provider=AuthProvider.APPLE,
+        email=email,
+        password=password,
+        sub=sub,
+    )
 
 
 async def get_user_by_id(db: AsyncSession, user_id: uuid.UUID) -> User | None:
@@ -222,3 +207,119 @@ async def get_user_by_id(db: AsyncSession, user_id: uuid.UUID) -> User | None:
         )
     )
     return result.scalar_one_or_none()
+
+
+def _provider_label(provider: AuthProvider) -> str:
+    return provider.value.capitalize()
+
+
+async def _authenticate_oauth_user(
+    db: AsyncSession,
+    *,
+    provider: AuthProvider,
+    sub: str,
+    email: str | None,
+    full_name: str | None,
+    avatar_url: str | None,
+    email_verified: bool,
+) -> User:
+    await ensure_seeded_user_roles(db)
+
+    result = await db.execute(
+        select(AuthIdentity).where(
+            AuthIdentity.provider == provider,
+            AuthIdentity.provider_user_id == sub,
+        )
+    )
+    identity = result.scalar_one_or_none()
+
+    now = datetime.now(UTC).replace(tzinfo=None)
+
+    if identity:
+        user_result = await db.execute(select(User).where(User.id == identity.user_id))
+        user = user_result.scalar_one()
+        identity.last_login_at = now
+        user.last_login_at = now
+        await db.commit()
+        await db.refresh(user)
+        return user
+
+    if not email:
+        raise AuthError(
+            f"{_provider_label(provider)} credential is missing email for first-time sign-in",
+            status_code=400,
+        )
+
+    existing_user = await db.execute(select(User).where(User.primary_email == email))
+    if existing_user.scalar_one_or_none():
+        raise AuthError(
+            "Email already registered with a different method",
+            status_code=409,
+        )
+
+    user = User(
+        primary_email=email,
+        full_name=full_name,
+        avatar_url=avatar_url,
+        status=UserStatus.ACTIVE,
+        email_verified_at=now if email_verified else None,
+        last_login_at=now,
+    )
+    db.add(user)
+    await db.flush()
+
+    identity = AuthIdentity(
+        user_id=user.id,
+        provider=provider,
+        provider_user_id=sub,
+        email=email,
+        password_hash=None,
+        is_primary=True,
+        is_verified=email_verified,
+        last_login_at=now,
+    )
+    db.add(identity)
+    await _initialize_new_user_account(db, user=user, provider=provider)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+async def _link_oauth_identity(
+    db: AsyncSession,
+    *,
+    provider: AuthProvider,
+    email: str | None,
+    password: str,
+    sub: str,
+) -> User:
+    if not email:
+        raise AuthError(
+            f"{_provider_label(provider)} credential is missing email for account linking",
+            status_code=400,
+        )
+
+    user = await authenticate_user(db, email, password)
+
+    existing = await db.execute(
+        select(AuthIdentity).where(
+            AuthIdentity.provider == provider,
+            AuthIdentity.provider_user_id == sub,
+        )
+    )
+    if existing.scalar_one_or_none():
+        return user
+
+    identity = AuthIdentity(
+        user_id=user.id,
+        provider=provider,
+        provider_user_id=sub,
+        email=email,
+        password_hash=None,
+        is_primary=False,
+        is_verified=True,
+    )
+    db.add(identity)
+    await db.commit()
+    await db.refresh(user)
+    return user

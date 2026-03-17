@@ -101,7 +101,8 @@ Current implementation status
 
 Phases 7 through 11 currently ship:
 	•	voice_profile creation and listing in the authenticated product UI
-	•	required consent capture at voice_profile creation time via `consent_confirmed`
+	•	versioned voice-cloning consent capture through the `consents` table and `/api/consents`
+	•	legacy `voice_profiles.consent_confirmed` snapshot still stored for compatibility, but actual clone authorization now checks current consent records
 	•	browser recording via MediaRecorder and direct file upload as two sample-input paths
 	•	duration capture during upload initiation
 	•	private direct-to-storage uploads for raw voice samples
@@ -116,9 +117,9 @@ Phases 7 through 11 currently ship:
 	•	per-page narration generation for newly created stories that selected a ready narration voice
 	•	private narration-audio asset storage plus signed-read playback on the story detail screen
 	•	best-effort duration capture from ElevenLabs timestamp metadata without adding a separate media-analysis dependency
+	•	voice-clone usage metering and plan-based clone limits
 
 Not shipped yet:
-	•	separate `consents` table writes for voice cloning
 	•	webhook-based provider completion handling
 	•	provider-side deletion when a local voice_profile is deleted
 	•	provider preview sample generation for dashboard playback
@@ -128,14 +129,15 @@ Not shipped yet:
 Upload flow
 
 Recommended voice sample upload flow:
-	1.	authenticated frontend creates a voice_profile and records consent at that time
-	2.	authenticated frontend requests a signed upload URL for a specific voice_profile
-	3.	FastAPI verifies the user, validates MIME type/file size/duration, and creates an object key in a private voice-sample prefix
-	4.	FastAPI creates pending `assets` and `voice_samples` rows linked to the target voice_profile
-	5.	FastAPI returns a short-lived signed upload URL
-	6.	browser uploads directly to object storage
-	7.	frontend notifies backend that upload completed
-	8.	backend verifies the object exists in storage and marks the asset ready and the sample uploaded
+	1.	authenticated frontend creates a voice_profile
+	2.	if voice cloning consent has not been accepted yet, frontend records that consent before the first clone request
+	3.	authenticated frontend requests a signed upload URL for a specific voice_profile
+	4.	FastAPI verifies the user, validates MIME type/file size/duration, and creates an object key in a private voice-sample prefix
+	5.	FastAPI creates pending `assets` and `voice_samples` rows linked to the target voice_profile
+	6.	FastAPI returns a short-lived signed upload URL
+	7.	browser uploads directly to object storage
+	8.	frontend notifies backend that upload completed
+	9.	backend verifies the object exists in storage and marks the asset ready and the sample uploaded
 
 Why direct upload is preferred:
 	•	keeps large files out of the API process
@@ -148,8 +150,8 @@ Voice cloning requires explicit consent.
 
 Minimum expectations:
 	•	record consent before starting clone processing
-	•	set voice_profiles.consent_confirmed only after consent is captured
-	•	store a matching consent record for voice cloning when the consent/audit phase lands
+	•	store a matching consent record for voice cloning with the current required version
+	•	set voice_profiles.consent_confirmed only after consent is captured or confirmed
 	•	do not allow clone processing for a profile without confirmed consent
 
 The system should assume voice data is highly sensitive.

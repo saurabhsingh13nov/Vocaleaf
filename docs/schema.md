@@ -107,10 +107,29 @@ Important fields:
 	•	full_name
 	•	avatar_url
 	•	status
+	•	role
 	•	email_verified_at
 	•	last_login_at
 	•	created_at
 	•	updated_at
+
+Current implementation note:
+	•	`role` is a FK-backed role code used for internal authorization: `customer`, `staff`, `admin`
+
+user_roles
+
+Represents the database-backed catalog of valid app roles.
+
+Important fields:
+	•	code
+	•	display_name
+	•	description
+	•	created_at
+	•	updated_at
+
+Current implementation note:
+	•	`users.role` references `user_roles.code`
+	•	the app currently seeds `customer`, `staff`, and `admin`
 
 auth_identities
 
@@ -415,6 +434,7 @@ Represents product tier definitions.
 
 Important fields:
 	•	id
+	•	code
 	•	name
 	•	monthly_story_limit
 	•	max_pages_per_story
@@ -424,6 +444,14 @@ Important fields:
 	•	price_cents
 	•	active
 	•	created_at
+
+Current seeded defaults:
+	•	`free` = 3 stories per period, 6 pages per story, 1 voice clone, 15,000 narration characters
+	•	`premium` = 30 stories per period, 10 pages per story, 5 voice clones, 300,000 narration characters
+
+Current implementation note:
+	•	`code` is the stable identifier used by services and admin APIs
+	•	the database row is the source of truth for base limits; bootstrap only creates missing plan rows and backfills missing codes
 
 subscriptions
 
@@ -443,6 +471,35 @@ Important fields:
 	•	updated_at
 
 This allows feature gating and entitlement checks.
+
+Current implementation note:
+	•	new accounts receive an auto-assigned `free` subscription period
+	•	before Stripe exists, plan changes happen through an internal CLI or admin API that creates a new active subscription row
+
+user_entitlement_overrides
+
+Represents a per-user absolute override of base plan limits.
+
+Important fields:
+	•	id
+	•	user_id
+	•	created_by_user_id
+	•	revoked_by_user_id
+	•	monthly_story_limit
+	•	max_pages_per_story
+	•	image_quality_mode
+	•	voice_clone_limit
+	•	monthly_audio_chars_limit
+	•	reason
+	•	effective_from
+	•	effective_to
+	•	revoked_at
+	•	created_at
+	•	updated_at
+
+Usage:
+	•	use this when one user needs a different hard cap than the underlying plan row
+	•	the latest active override wins for any non-null field it sets
 
 Compliance and trust
 
@@ -465,6 +522,10 @@ This is especially important for:
 	•	privacy acceptance
 	•	child content handling
 
+Current implementation note:
+	•	the app currently records and checks `terms_of_service`, `privacy_policy`, and `voice_cloning`
+	•	accepted versions are date-based strings, currently `2026-03-16`
+
 audit_events
 
 Represents an append-only record of important user/system actions.
@@ -472,6 +533,7 @@ Represents an append-only record of important user/system actions.
 Important fields:
 	•	id
 	•	user_id
+	•	actor_user_id
 	•	entity_type
 	•	entity_id
 	•	event_type
@@ -483,6 +545,32 @@ Useful for:
 	•	compliance needs
 	•	deletion tracking
 	•	security reviews
+
+Current implementation note:
+	•	key event types currently include account registration, consent acceptance, story creation/deletion, voice-profile deletion, voice-sample deletion, voice-clone requests, subscription assignment, plan edits, role changes, and grant/override changes
+	•	`actor_user_id` captures which staff/admin user initiated an internal change
+
+usage_credit_grants
+
+Represents additive per-user credits on top of the resolved base limit.
+
+Important fields:
+	•	id
+	•	user_id
+	•	created_by_user_id
+	•	revoked_by_user_id
+	•	usage_type
+	•	quantity
+	•	reason
+	•	effective_from
+	•	effective_to
+	•	revoked_at
+	•	created_at
+	•	updated_at
+
+Usage:
+	•	use this for credits like `+2 stories`, `+1 voice clone`, or `+5000 narration chars`
+	•	active grants are additive and stack with the resolved plan/override limit
 
 Usage and analytics
 
@@ -508,6 +596,12 @@ Examples of tracked events:
 	•	TTS characters synthesized
 	•	voice clones created
 
+Current implementation note:
+	•	usage is aggregated inside the user’s active subscription period
+	•	deletions do not refund usage
+	•	`images_generated` is recorded for visibility, but the current plans do not enforce an image quota
+	•	effective quota checks resolve in this order: current subscription plan, active entitlement override, then active usage-credit grants
+
 This supports:
 	•	analytics
 	•	cost accounting
@@ -527,6 +621,8 @@ Ownership relationships
 	•	one user has many consents
 	•	one user has many audit_events
 	•	one user has many usage_records
+	•	one user has many user_entitlement_overrides
+	•	one user has many usage_credit_grants
 
 Voice relationships
 	•	one voice_profile has many voice_samples
@@ -548,6 +644,7 @@ Character relationships
 Billing relationships
 	•	one plan has many subscriptions
 	•	one subscription belongs to one user
+	•	one audit_event may belong to one subject user and one actor user
 
 Important modeling choices
 

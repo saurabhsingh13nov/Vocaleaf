@@ -27,6 +27,7 @@ from app.models.story import Story
 from app.models.story_generation_job import StoryGenerationJob
 from app.models.story_page import StoryPage
 from app.models.story_page_generation import StoryPageGeneration
+from app.services.usage import record_audio_chars_usage
 from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -280,6 +281,14 @@ async def run_audio_generation_in_session(
         completed_at=_utcnow_naive(),
     )
     db.add(page_generation)
+    record_audio_chars_usage(
+        db,
+        user_id=story.user_id,
+        story_id=story.id,
+        story_page_id=page.id,
+        quantity=len((page.text_content or "").strip()),
+        provider="elevenlabs",
+    )
 
     page.audio_asset_id = asset.id
     page.duration_ms = result.duration_ms

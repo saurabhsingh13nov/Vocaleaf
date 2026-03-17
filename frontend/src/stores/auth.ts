@@ -33,6 +33,8 @@ export const useAuthStore = defineStore('auth', () => {
   const isInitialized = ref(false)
 
   const isAuthenticated = computed(() => user.value !== null)
+  const isElevated = computed(() => user.value?.role === 'staff' || user.value?.role === 'admin')
+  const isAdmin = computed(() => user.value?.role === 'admin')
 
   async function register(payload: RegisterPayload) {
     isLoading.value = true
@@ -133,7 +135,9 @@ export const useAuthStore = defineStore('auth', () => {
     clearUser,
     fetchUser,
     getErrorMessage,
+    isAdmin,
     isAuthenticated,
+    isElevated,
     isInitialized,
     isLoading,
     linkWithGoogle,

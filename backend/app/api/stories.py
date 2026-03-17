@@ -1,6 +1,7 @@
 """Story endpoints."""
 
 import uuid
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +10,7 @@ from app.api.dependencies import get_current_user
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.story import StoryCreate, StoryListItem, StoryResponse
+from app.services.asset import AssetError, get_owned_asset_download_urls
 from app.services.story import (
     StoryError,
     create_story,
@@ -57,6 +59,7 @@ async def list_all(
 @router.get("/{story_id}", response_model=StoryResponse)
 async def get_one(
     story_id: uuid.UUID,
+    include_urls: bool = Query(default=False),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -64,9 +67,27 @@ async def get_one(
     if story is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Story not found")
 
+    asset_urls_by_id: dict[uuid.UUID, tuple[str, datetime]] = {}
+    if include_urls:
+        asset_ids = {
+            asset_id
+            for page in story.pages
+            for asset_id in (page.image_asset_id, page.audio_asset_id)
+            if asset_id is not None
+        }
+        try:
+            asset_urls_by_id = await get_owned_asset_download_urls(
+                db,
+                user_id=current_user.id,
+                asset_ids=asset_ids,
+            )
+        except AssetError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.message)
+
     return StoryResponse.from_model(
         story,
         latest_error_message=story_latest_error_message(story),
+        asset_urls_by_id=asset_urls_by_id,
     )
 
 

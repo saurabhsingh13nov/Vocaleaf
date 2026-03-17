@@ -36,10 +36,12 @@ class TestGoogleAuthNewUser:
 
         assert resp.status_code == 200
         data = resp.json()
-        assert data["primary_email"] == "googleuser@gmail.com"
-        assert data["full_name"] == "Google User"
-        assert data["status"] == "active"
-        assert data["email_verified_at"] is not None
+        assert data["user"]["primary_email"] == "googleuser@gmail.com"
+        assert data["user"]["full_name"] == "Google User"
+        assert data["user"]["status"] == "active"
+        assert data["user"]["email_verified_at"] is not None
+        assert data["access_token"]
+        assert data["refresh_token"]
         assert "access_token" in resp.cookies
         assert "refresh_token" in resp.cookies
 
@@ -51,13 +53,13 @@ class TestGoogleAuthReturningUser:
                 GOOGLE_ENDPOINT,
                 json={"credential": "fake-id-token"},
             )
-            user_id_1 = resp1.json()["id"]
+            user_id_1 = resp1.json()["user"]["id"]
 
             resp2 = await client.post(
                 GOOGLE_ENDPOINT,
                 json={"credential": "fake-id-token"},
             )
-            user_id_2 = resp2.json()["id"]
+            user_id_2 = resp2.json()["user"]["id"]
 
         assert resp2.status_code == 200
         assert user_id_1 == user_id_2
@@ -121,7 +123,7 @@ class TestLinkGoogleIdentity:
             )
 
         assert resp.status_code == 200
-        assert resp.json()["primary_email"] == "googleuser@gmail.com"
+        assert resp.json()["user"]["primary_email"] == "googleuser@gmail.com"
         assert "access_token" in resp.cookies
         assert "refresh_token" in resp.cookies
 

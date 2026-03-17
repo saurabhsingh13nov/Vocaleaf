@@ -24,6 +24,7 @@ from app.workers.voice_clone_worker import (
 
 REGISTER_URL = "/api/auth/register"
 VOICE_PROFILE_URL = "/api/voice-profiles"
+CONSENTS_URL = "/api/consents"
 
 
 class FakeR2Client:
@@ -110,7 +111,22 @@ async def create_profile(client: AsyncClient, *, name: str = "Bedtime Voice", de
     return resp.json()
 
 
-async def test_create_voice_profile_requires_consent(client: AsyncClient):
+async def accept_voice_cloning_consent(client: AsyncClient) -> None:
+    response = await client.post(
+        CONSENTS_URL,
+        json={
+            "consents": [
+                {
+                    "consent_type": "voice_cloning",
+                    "accepted_version": "2026-03-16",
+                }
+            ]
+        },
+    )
+    assert response.status_code == 200
+
+
+async def test_create_voice_profile_does_not_require_consent_record(client: AsyncClient):
     await register_and_get_client(client)
 
     resp = await client.post(
@@ -121,8 +137,7 @@ async def test_create_voice_profile_requires_consent(client: AsyncClient):
         },
     )
 
-    assert resp.status_code == 400
-    assert "consent" in resp.json()["detail"].lower()
+    assert resp.status_code == 201
 
 
 async def test_create_voice_profile_sets_pending_status(client: AsyncClient, db_session):
@@ -140,7 +155,7 @@ async def test_create_voice_profile_sets_pending_status(client: AsyncClient, db_
     assert resp.status_code == 201
     body = resp.json()
     assert body["status"] == "pending"
-    assert body["consent_confirmed"] is True
+    assert body["consent_confirmed"] is False
     assert body["default_for_user"] is True
     assert body["samples"] == []
 
@@ -409,6 +424,7 @@ async def test_clone_voice_profile_marks_processing_and_enqueues_task(client: As
     asset = await get_asset(db_session, upload_resp.json()["asset_id"])
     fake_r2.objects[asset.object_key] = R2ObjectMetadata(file_size_bytes=1024, checksum="etag-clone")
     await client.post(f"{VOICE_PROFILE_URL}/{profile['id']}/samples/{upload_resp.json()['sample_id']}/confirm")
+    await accept_voice_cloning_consent(client)
 
     resp = await client.post(f"{VOICE_PROFILE_URL}/{profile['id']}/clone")
 
@@ -430,6 +446,7 @@ async def test_clone_voice_profile_requires_uploaded_sample(client: AsyncClient,
 
     await register_and_get_client(client)
     profile = await create_profile(client)
+    await accept_voice_cloning_consent(client)
 
     resp = await client.post(f"{VOICE_PROFILE_URL}/{profile['id']}/clone")
 
@@ -460,6 +477,7 @@ async def test_clone_voice_profile_is_idempotent_while_processing(client: AsyncC
     asset = await get_asset(db_session, upload_resp.json()["asset_id"])
     fake_r2.objects[asset.object_key] = R2ObjectMetadata(file_size_bytes=1024, checksum="etag-clone")
     await client.post(f"{VOICE_PROFILE_URL}/{profile['id']}/samples/{upload_resp.json()['sample_id']}/confirm")
+    await accept_voice_cloning_consent(client)
 
     first = await client.post(f"{VOICE_PROFILE_URL}/{profile['id']}/clone")
     second = await client.post(f"{VOICE_PROFILE_URL}/{profile['id']}/clone")
@@ -478,10 +496,39 @@ async def test_clone_voice_profile_rejects_ready_profile(client: AsyncClient, db
     voice_profile.provider = "elevenlabs"
     voice_profile.provider_voice_id = "voice_ready_123"
     await db_session.commit()
+    await accept_voice_cloning_consent(client)
 
     resp = await client.post(f"{VOICE_PROFILE_URL}/{profile['id']}/clone")
 
     assert resp.status_code == 409
+
+
+async def test_clone_voice_profile_requires_current_voice_consent(client: AsyncClient, db_session, monkeypatch):
+    fake_r2 = FakeR2Client()
+    monkeypatch.setattr("app.services.voice.get_r2_client", lambda: fake_r2)
+    monkeypatch.setattr(
+        "app.workers.voice_clone_worker.clone_voice_profile_task.delay",
+        lambda profile_id: None,
+    )
+
+    await register_and_get_client(client)
+    profile = await create_profile(client)
+    upload_resp = await client.post(
+        f"{VOICE_PROFILE_URL}/{profile['id']}/samples",
+        json={
+            "mime_type": "audio/webm",
+            "file_size_bytes": 1024,
+            "duration_seconds": 5.1,
+        },
+    )
+    asset = await get_asset(db_session, upload_resp.json()["asset_id"])
+    fake_r2.objects[asset.object_key] = R2ObjectMetadata(file_size_bytes=1024, checksum="etag-clone")
+    await client.post(f"{VOICE_PROFILE_URL}/{profile['id']}/samples/{upload_resp.json()['sample_id']}/confirm")
+
+    response = await client.post(f"{VOICE_PROFILE_URL}/{profile['id']}/clone")
+
+    assert response.status_code == 400
+    assert "consent" in response.json()["detail"].lower()
 
 
 async def test_run_voice_clone_sets_profile_ready_and_marks_samples_accepted(

@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { User } from '@/services/auth'
+import { getSubscriptionSummary } from '@/services/subscription'
 import DashboardView from '@/views/DashboardView.vue'
 import StoryCreateView from '@/views/StoryCreateView.vue'
 import StoryDetailView from '@/views/StoryDetailView.vue'
@@ -73,11 +74,16 @@ vi.mock('@/services/voice', () => ({
   uploadVoiceSampleFile: vi.fn(),
 }))
 
+vi.mock('@/services/subscription', () => ({
+  getSubscriptionSummary: vi.fn(),
+}))
+
 const mockedCreateStory = vi.mocked(createStory)
 const mockedDeleteStory = vi.mocked(deleteStory)
 const mockedGetAssetUrl = vi.mocked(getAssetUrl)
 const mockedGetStory = vi.mocked(getStory)
 const mockedGetStories = vi.mocked(getStories)
+const mockedGetSubscriptionSummary = vi.mocked(getSubscriptionSummary)
 const mockedRetryStoryMissingOutputs = vi.mocked(retryStoryMissingOutputs)
 const mockedRetryStoryPageMissingOutputs = vi.mocked(retryStoryPageMissingOutputs)
 const mockedGetChildren = vi.mocked(getChildren)
@@ -91,6 +97,7 @@ const sampleUser: User = {
   full_name: 'Parent Reader',
   avatar_url: null,
   status: 'active',
+  role: 'customer',
   email_verified_at: null,
   created_at: '2026-03-11T20:00:00Z',
 }
@@ -137,6 +144,29 @@ describe('story views', () => {
       value: mediaPauseMock,
     })
     mockedGetStories.mockResolvedValue([])
+    mockedGetSubscriptionSummary.mockResolvedValue({
+      id: 'subscription-1',
+      status: 'active',
+      current_period_start: '2026-03-01T00:00:00Z',
+      current_period_end: '2026-03-31T00:00:00Z',
+      plan: {
+        id: 'plan-1',
+        code: 'free',
+        name: 'free',
+        monthly_story_limit: 3,
+        max_pages_per_story: 6,
+        image_quality_mode: 'standard',
+        voice_clone_limit: 1,
+        monthly_audio_chars_limit: 15000,
+        price_cents: 0,
+      },
+      usage: {
+        stories_created: { used: 0, limit: 3, remaining: 3, unit: 'story' },
+        voice_clones_created: { used: 0, limit: 1, remaining: 1, unit: 'voice_clone' },
+        audio_chars_synthesized: { used: 0, limit: 15000, remaining: 15000, unit: 'character' },
+        images_generated: { used: 0, limit: null, remaining: null, unit: 'page_image' },
+      },
+    })
     mockedGetAssetUrl.mockResolvedValue({ url: 'https://assets.example/file.mp3', expires_at: '2026-03-13T20:10:00Z' })
     mockedGetChildren.mockResolvedValue([
       {
@@ -200,8 +230,8 @@ describe('story views', () => {
     await wrapper.get('textarea[name="prompt"]').setValue('A lantern walk')
     const bedtimeButton = wrapper.findAll('button').find((entry) => entry.text() === 'Bedtime')
     await bedtimeButton?.trigger('click')
-    const sevenPagesButton = wrapper.findAll('button').find((entry) => entry.text() === '7')
-    await sevenPagesButton?.trigger('click')
+    const sixPagesButton = wrapper.findAll('button').find((entry) => entry.text() === '6')
+    await sixPagesButton?.trigger('click')
     await wrapper.get('select[name="reading_level"]').setValue('Preschool')
     await wrapper.get('select[name="voice_profile_id"]').setValue('voice-1')
     await wrapper.get('form').trigger('submit.prevent')
@@ -212,7 +242,7 @@ describe('story views', () => {
         child_id: 'child-1',
         prompt: 'A lantern walk',
         theme: 'Bedtime',
-        target_page_count: 7,
+        target_page_count: 6,
         voice_profile_id: 'voice-1',
       }),
     )

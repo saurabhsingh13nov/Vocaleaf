@@ -16,6 +16,9 @@ from app.models.story_generation_job import StoryGenerationJob
 from app.models.story_page import StoryPage
 from app.models.voice_profile import VoiceProfile
 from app.schemas.story import StoryCreate
+from app.services.audit import record_audit_event
+from app.services.subscription import SubscriptionError, enforce_story_creation_allowed
+from app.services.usage import record_story_created_usage
 
 
 class StoryError(Exception):
@@ -83,6 +86,15 @@ async def create_story(
         if voice_profile.status != VoiceProfileStatus.READY:
             raise StoryError("Voice profile must be ready before story creation", status_code=400)
 
+    try:
+        await enforce_story_creation_allowed(
+            db,
+            user_id=user_id,
+            target_page_count=data.target_page_count,
+        )
+    except SubscriptionError as exc:
+        raise StoryError(exc.message, status_code=exc.status_code) from exc
+
     story = Story(
         user_id=user_id,
         child_id=data.child_id,
@@ -98,6 +110,18 @@ async def create_story(
     )
     db.add(story)
     await db.flush()
+    record_story_created_usage(db, user_id=user_id, story_id=story.id)
+    record_audit_event(
+        db,
+        user_id=user_id,
+        entity_type="story",
+        entity_id=story.id,
+        event_type="story.created",
+        event_data={
+            "target_page_count": data.target_page_count,
+            "voice_profile_id": str(data.voice_profile_id) if data.voice_profile_id else None,
+        },
+    )
 
     job = StoryGenerationJob(
         story_id=story.id,
@@ -327,6 +351,14 @@ async def delete_story(
     if story is None:
         raise StoryError("Story not found", status_code=404)
 
+    record_audit_event(
+        db,
+        user_id=user_id,
+        entity_type="story",
+        entity_id=story.id,
+        event_type="story.deleted",
+        event_data={"previous_status": story.status.value},
+    )
     story.status = StoryStatus.DELETED
     await db.commit()
 

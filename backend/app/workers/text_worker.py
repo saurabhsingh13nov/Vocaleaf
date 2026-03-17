@@ -18,6 +18,7 @@ from app.models.story import Story
 from app.models.story_generation_job import StoryGenerationJob
 from app.models.story_page import StoryPage
 from app.models.story_page_generation import StoryPageGeneration
+from app.services.subscription import SubscriptionError, ensure_audio_quota_available
 from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,10 @@ def _validate_story_output(output: StoryTextOutput, *, expected_page_count: int 
     expected_numbers = list(range(1, len(output.pages) + 1))
     if page_numbers != expected_numbers:
         raise AnthropicError("Anthropic response page numbers must start at 1 and be sequential")
+
+
+def _total_story_text_characters(output: StoryTextOutput) -> int:
+    return sum(len(page.text_content.strip()) for page in output.pages)
 
 
 async def run_text_generation(
@@ -175,6 +180,23 @@ async def run_text_generation_in_session(
         )
         logger.exception("Text generation failed for story %s", story_id, exc_info=exc)
         return
+
+    if story.voice_profile_id is not None:
+        required_characters = _total_story_text_characters(output)
+        try:
+            await ensure_audio_quota_available(
+                db,
+                user_id=story.user_id,
+                required_characters=required_characters,
+            )
+        except SubscriptionError as exc:
+            await mark_text_generation_failed_in_session(
+                db,
+                story_id=story_id,
+                job_id=job_id,
+                error_message=exc.message,
+            )
+            return
 
     db.add_all(
         [

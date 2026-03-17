@@ -22,7 +22,7 @@ export interface VoiceProfile {
 
 export interface CreateVoiceProfilePayload {
   display_name: string
-  consent_confirmed: boolean
+  consent_confirmed?: boolean | null
   default_for_user?: boolean
 }
 

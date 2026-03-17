@@ -22,6 +22,15 @@ The auth system should support:
 	•	password reset
 	•	backend-friendly auth for FastAPI
 
+Current implementation notes
+
+The current product implementation adds two account-adjacent behaviors beyond basic authentication:
+	•	new password and first-time Google signups automatically receive a free subscription period
+	•	authenticated users are blocked by a post-auth legal consent gate until the latest Terms of Service and Privacy Policy versions are accepted
+	•	authenticated users carry an app role flag used to gate internal staff/admin tooling
+
+This keeps password and OAuth flows aligned while still recording explicit legal acceptance.
+
 Core modeling decision
 
 Authentication must be separated into two layers:
@@ -90,6 +99,7 @@ Expected fields:
 	•	full_name
 	•	avatar_url
 	•	status
+	•	role
 	•	email_verified_at
 	•	last_login_at
 	•	created_at
@@ -99,6 +109,18 @@ Notes:
 	•	primary_email may be nullable temporarily for some onboarding edge cases
 	•	email_verified_at refers to the primary account email status
 	•	last_login_at reflects the most recent successful login across all auth methods
+	•	`role` is an app authorization flag, not a login-method concept
+
+Current role values:
+	•	`customer`
+	•	`staff`
+	•	`admin`
+
+Role rules:
+	•	new accounts default to `customer`
+	•	`staff` and `admin` can access the internal `/admin` console and `/api/admin/*`
+	•	only `admin` can edit base plans and change another user’s role
+	•	valid roles live in the `user_roles` table, and `users.role` is a FK to `user_roles.code`
 
 auth_identities
 
@@ -148,6 +170,12 @@ Login flow
 	3.	backend verifies the password hash
 	4.	backend updates last_login_at
 	5.	backend issues a session or token
+
+Session payload expectations
+
+The current API returns the authenticated `user` object alongside the issued access and refresh tokens on register/login/OAuth flows.
+
+That `user` payload includes the app `role` so the frontend can enforce staff/admin route guards immediately after session restoration.
 
 Password storage requirements
 

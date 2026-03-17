@@ -70,8 +70,10 @@ class TestRegister:
         })
         assert resp.status_code == 201
         data = resp.json()
-        assert data["primary_email"] == "new@example.com"
-        assert data["full_name"] == "New User"
+        assert data["user"]["primary_email"] == "new@example.com"
+        assert data["user"]["full_name"] == "New User"
+        assert data["access_token"]
+        assert data["refresh_token"]
         assert "access_token" in resp.cookies
         assert "refresh_token" in resp.cookies
 
@@ -112,7 +114,7 @@ class TestLogin:
             "password": "securepass123",
         })
         assert resp.status_code == 200
-        assert resp.json()["primary_email"] == "login@example.com"
+        assert resp.json()["user"]["primary_email"] == "login@example.com"
         assert "access_token" in resp.cookies
 
     async def test_login_wrong_password(self, client):
@@ -147,6 +149,20 @@ class TestMe:
         assert me_resp.status_code == 200
         assert me_resp.json()["primary_email"] == "me@example.com"
 
+    async def test_me_with_valid_bearer_token(self, client):
+        resp = await client.post(REGISTER_URL, json={
+            "email": "bearer@example.com",
+            "password": "securepass123",
+            "full_name": "Bearer User",
+        })
+        access_token = resp.json()["access_token"]
+
+        client.cookies.clear()
+        me_resp = await client.get(ME_URL, headers={"Authorization": f"Bearer {access_token}"})
+
+        assert me_resp.status_code == 200
+        assert me_resp.json()["primary_email"] == "bearer@example.com"
+
     async def test_me_without_token(self, client):
         resp = await client.get(ME_URL)
         assert resp.status_code == 401
@@ -161,7 +177,25 @@ class TestRefresh:
         })
         resp = await client.post(REFRESH_URL)
         assert resp.status_code == 200
+        assert resp.json()["access_token"]
         assert "access_token" in resp.cookies
+
+    async def test_refresh_with_bearer_refresh_token(self, client):
+        reg_resp = await client.post(REGISTER_URL, json={
+            "email": "refreshbearer@example.com",
+            "password": "securepass123",
+            "full_name": "Refresh Bearer",
+        })
+        refresh_token = reg_resp.json()["refresh_token"]
+
+        client.cookies.clear()
+        resp = await client.post(
+            REFRESH_URL,
+            headers={"Authorization": f"Bearer {refresh_token}"},
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["access_token"]
 
     async def test_refresh_with_access_token_rejected(self, client):
         """Access tokens must not be usable as refresh tokens."""
@@ -170,11 +204,13 @@ class TestRefresh:
             "password": "securepass123",
             "full_name": "Bad Refresh",
         })
-        access_token = reg_resp.cookies.get("access_token")
-        # Clear cookies and send access token as refresh_token
+        access_token = reg_resp.json()["access_token"]
+        # Clear cookies and send access token as refresh bearer token
         client.cookies.clear()
-        client.cookies.set("refresh_token", access_token, domain="test", path="/api/auth/refresh")
-        resp = await client.post(REFRESH_URL)
+        resp = await client.post(
+            REFRESH_URL,
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
         assert resp.status_code == 401
 
     async def test_refresh_without_token(self, client):
@@ -208,7 +244,7 @@ class TestEmailNormalization:
             "password": "securepass123",
         })
         assert resp.status_code == 200
-        assert resp.json()["primary_email"] == "foo@bar.com"
+        assert resp.json()["user"]["primary_email"] == "foo@bar.com"
 
 
 class TestFullFlow:

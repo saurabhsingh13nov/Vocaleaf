@@ -45,6 +45,11 @@ class FakeAnthropicClient:
         return self.output
 
 
+class FakeDownloadClient:
+    def generate_download_url(self, *, object_key: str, expires_in: int) -> str:
+        return f"https://storage.example/download/{object_key}?expires={expires_in}"
+
+
 async def register_and_get_client(client: AsyncClient, suffix: str = "") -> AsyncClient:
     response = await client.post(
         REGISTER_URL,
@@ -306,6 +311,67 @@ async def test_get_story_detail_returns_pages_in_order(client: AsyncClient, db_s
     body = response.json()
     assert [page["page_number"] for page in body["pages"]] == [1, 2]
     assert body["title"] == "Moonlight Lantern"
+    assert body["pages"][0]["image_url"] is None
+    assert body["pages"][0]["audio_url"] is None
+
+
+async def test_get_story_detail_include_urls_inlines_signed_media(client: AsyncClient, db_session, monkeypatch):
+    monkeypatch.setattr("app.services.asset.get_r2_client", lambda: FakeDownloadClient())
+
+    await register_and_get_client(client)
+    user = await get_user_by_email(db_session, "story-user@example.com")
+    child = Child(user_id=user.id, name="Luna", age=5)
+    image_asset = Asset(
+        user_id=user.id,
+        storage_provider="r2",
+        bucket_name="bucket",
+        object_key=f"stories/{user.id}/page-images/image-asset",
+        asset_type=AssetType.PAGE_IMAGE,
+        upload_status=AssetUploadStatus.READY,
+        is_private=True,
+    )
+    audio_asset = Asset(
+        user_id=user.id,
+        storage_provider="r2",
+        bucket_name="bucket",
+        object_key=f"stories/{user.id}/page-audio/audio-asset",
+        asset_type=AssetType.PAGE_AUDIO,
+        upload_status=AssetUploadStatus.READY,
+        is_private=True,
+    )
+    story = Story(
+        user_id=user.id,
+        child=child,
+        title="Moonlight Lantern",
+        prompt="A lantern walk",
+        status=StoryStatus.READY,
+        target_page_count=1,
+        language="en",
+    )
+    db_session.add_all([user, child, image_asset, audio_asset, story])
+    await db_session.flush()
+
+    page = StoryPage(
+        story=story,
+        page_number=1,
+        text_content="First page",
+        image_prompt="First prompt",
+        continuity_notes="First notes",
+        status=StoryPageStatus.COMPLETE,
+        image_asset_id=image_asset.id,
+        audio_asset_id=audio_asset.id,
+    )
+    db_session.add(page)
+    await db_session.commit()
+
+    response = await client.get(f"{STORIES_URL}/{story.id}?include_urls=true")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["pages"][0]["image_url"].startswith("https://storage.example/download/")
+    assert body["pages"][0]["audio_url"].startswith("https://storage.example/download/")
+    assert body["pages"][0]["image_url_expires_at"] is not None
+    assert body["pages"][0]["audio_url_expires_at"] is not None
 
 
 async def test_get_story_detail_returns_404_for_other_user(client: AsyncClient, db_session):

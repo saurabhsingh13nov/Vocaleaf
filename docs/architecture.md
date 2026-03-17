@@ -36,6 +36,7 @@ High-level system diagram
 │ - voice sample upload                                                      │
 │ - story creation                                                           │
 │ - story reader                                                             │
+│ - internal admin console for staff/admin                                   │
 └───────────────────────────────┬─────────────────────────────────────────────┘
                                 │ HTTPS
                                 ▼
@@ -145,6 +146,7 @@ Primary responsibilities:
 	•	story creation form
 	•	voice upload UX
 	•	story playback UI
+	•	internal admin tooling for staff/admin users
 	•	polling or subscribing to generation status
 
 It should not contain business-critical logic. Validation and authorization belong in the backend.
@@ -382,10 +384,28 @@ Responsibilities:
 	•	quotas and plan checks
 	•	metered usage recording
 	•	cost tracking by provider
+	•	free-plan auto-assignment for new users
+	•	manual plan reassignment via internal CLI before Stripe exists
+	•	DB-defined plan limits keyed by immutable plan codes
+	•	per-user entitlement overrides and additive usage grants
+	•	exposing effective plan/usage summaries to the frontend and admin APIs
 
 This should exist early even if billing launches later.
 
-19. Observability and operations
+19. Internal admin module
+
+This module is a restricted operational surface for staff and admins.
+
+Responsibilities:
+	•	search users and inspect current subscription state
+	•	change a user’s plan assignment
+	•	grant per-user overrides or extra usage credits
+	•	edit base plan rows when the acting user is an admin
+	•	review recent audit events for support actions
+
+This should stay separate from customer-facing subscription pages.
+
+20. Observability and operations
 
 This module is not user-facing but is required for production reliability.
 
@@ -406,11 +426,17 @@ Signup and login flow
 User -> Frontend -> FastAPI Auth
      -> Password verification OR OAuth provider exchange
      -> users/auth_identities lookup or creation
+     -> free subscription auto-assigned for first-time accounts
+     -> role-aware session established (`customer`, `staff`, `admin`)
      -> session/token issued
+     -> consent status fetched
+     -> legal consent modal shown until current terms/privacy versions are accepted
 
 Voice clone setup flow
 
 User -> Frontend -> FastAPI
+     -> consent status fetched
+     -> voice cloning consent recorded if missing
      -> request signed upload URL
      -> upload sample to object storage
      -> create asset + voice_sample rows
@@ -421,13 +447,27 @@ User -> Frontend -> FastAPI
 Story generation flow
 
 User -> Frontend -> FastAPI Story API
+     -> active subscription + plan limits checked
+     -> effective entitlements resolved from plan + override + grants
      -> create story + generation job
      -> enqueue full story generation task
      -> text worker generates page plan + page text
+     -> narration-char budget checked before narrated story continues
      -> image worker generates page illustrations
      -> audio worker generates page narration
+     -> usage records written for story/image/audio work
      -> assets stored + story_pages updated
      -> story marked ready or failed
+
+Internal admin flow
+
+Staff/Admin -> Frontend Admin Console -> FastAPI Admin API
+     -> bearer/cookie auth resolved to current user
+     -> role check enforces staff/admin boundary
+     -> user detail loads effective subscription + usage + audit data
+     -> staff can assign plans and grant per-user credits
+     -> admins can additionally edit plan definitions and change user roles
+     -> audit events record both actor_user_id and affected subject user
 
 Story playback flow
 

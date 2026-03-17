@@ -6,11 +6,12 @@ from collections.abc import AsyncGenerator
 import asyncpg
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import event
+from sqlalchemy import event, text
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import settings
+from app.core.roles import ROLE_ADMIN, ROLE_CUSTOMER, ROLE_STAFF
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app as fastapi_app
@@ -68,6 +69,22 @@ async def _reset_test_database(test_url: URL) -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(
+            text(
+                """
+                INSERT INTO user_roles (code, display_name, description)
+                VALUES
+                    (:customer_code, 'Customer', 'Standard customer account with no internal admin access.'),
+                    (:staff_code, 'Staff', 'Internal support role with access to support tooling.'),
+                    (:admin_code, 'Admin', 'Internal admin role with access to plan and role management.')
+                """
+            ),
+            {
+                "customer_code": ROLE_CUSTOMER,
+                "staff_code": ROLE_STAFF,
+                "admin_code": ROLE_ADMIN,
+            },
+        )
 
     await engine.dispose()
 

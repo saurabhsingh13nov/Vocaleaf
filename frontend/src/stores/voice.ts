@@ -17,6 +17,7 @@ import {
   type VoiceProfile,
   type VoiceSample,
 } from '@/services/voice'
+import { useSubscriptionStore } from '@/stores/subscription'
 
 function getErrorMessage(error: unknown) {
   if (axios.isAxiosError(error)) {
@@ -44,6 +45,7 @@ interface UploadVoiceSampleInput {
 const PROFILE_POLL_INTERVAL_MS = 5000
 
 export const useVoiceStore = defineStore('voice', () => {
+  const subscriptionStore = useSubscriptionStore()
   const profiles = ref<VoiceProfile[]>([])
   const isLoading = ref(false)
   const error = ref<string | null>(null)
@@ -181,6 +183,9 @@ export const useVoiceStore = defineStore('voice', () => {
         if (profile.status === 'processing') {
           scheduleClonePoll(profileId)
           return
+        }
+        if (profile.status === 'ready') {
+          subscriptionStore.fetchSummary().catch(() => undefined)
         }
       } catch (e) {
         error.value = 'Failed to refresh voice profile status.'

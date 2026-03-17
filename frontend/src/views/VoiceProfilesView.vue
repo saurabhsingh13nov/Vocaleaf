@@ -1,18 +1,23 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
+import ConsentModal from '@/components/ConsentModal.vue'
 import ConfirmModal from '@/components/ConfirmModal.vue'
 import VoiceRecorder from '@/components/VoiceRecorder.vue'
 import VoiceSampleList from '@/components/VoiceSampleList.vue'
 import type { VoiceProfile } from '@/services/voice'
+import { useConsentStore } from '@/stores/consent'
+import { useSubscriptionStore } from '@/stores/subscription'
 import { useVoiceStore } from '@/stores/voice'
 
+const consentStore = useConsentStore()
+const subscriptionStore = useSubscriptionStore()
 const store = useVoiceStore()
 
 const displayName = ref('')
-const consentConfirmed = ref(false)
 const defaultForUser = ref(false)
 const localError = ref<string | null>(null)
+const pendingCloneProfileId = ref<string | null>(null)
 const pendingDelete = ref<
   | { kind: 'profile'; profileId: string; profileName: string }
   | { kind: 'sample'; profileId: string; sampleId: string; profileName: string; sampleLabel: string }
@@ -21,7 +26,11 @@ const pendingDelete = ref<
 const isDeleting = ref(false)
 
 onMounted(() => {
-  store.fetchProfiles()
+  Promise.allSettled([
+    consentStore.fetchStatus(),
+    store.fetchProfiles(),
+    subscriptionStore.fetchSummary(),
+  ])
 })
 
 onBeforeUnmount(() => {
@@ -31,19 +40,12 @@ onBeforeUnmount(() => {
 async function handleCreateProfile() {
   localError.value = null
 
-  if (!consentConfirmed.value) {
-    localError.value = 'Consent is required before creating a voice profile.'
-    return
-  }
-
   await store.createProfile({
     display_name: displayName.value,
-    consent_confirmed: consentConfirmed.value,
     default_for_user: defaultForUser.value,
   })
 
   displayName.value = ''
-  consentConfirmed.value = false
   defaultForUser.value = false
 }
 
@@ -137,6 +139,24 @@ async function confirmDelete() {
 }
 
 async function handleCloneProfile(profileId: string) {
+  if (!consentStore.hasVoiceCloningConsent) {
+    pendingCloneProfileId.value = profileId
+    return
+  }
+
+  await store.cloneProfile(profileId)
+}
+
+function cancelVoiceConsent() {
+  pendingCloneProfileId.value = null
+}
+
+async function confirmVoiceConsent() {
+  if (!pendingCloneProfileId.value) return
+
+  await consentStore.acceptVoiceCloningConsent()
+  const profileId = pendingCloneProfileId.value
+  pendingCloneProfileId.value = null
   await store.cloneProfile(profileId)
 }
 
@@ -196,6 +216,8 @@ function cloneButtonLabel(profile: VoiceProfile) {
 
   return 'Clone Voice'
 }
+
+const voiceUsage = computed(() => subscriptionStore.metric('voice_clones_created'))
 </script>
 
 <template>
@@ -208,9 +230,21 @@ function cloneButtonLabel(profile: VoiceProfile) {
           <p class="page-subtitle">
             Build narration voices deliberately: create a profile, upload private samples, and trigger cloning only when the profile is ready.
           </p>
+          <p class="mt-3 text-sm text-[var(--app-muted)]">
+            Voice cloning consent:
+            <span class="font-medium text-[var(--app-ink)]">
+              {{ consentStore.hasVoiceCloningConsent ? 'accepted' : 'required before first clone' }}
+            </span>
+            <span v-if="voiceUsage?.remaining !== null">
+              · {{ voiceUsage?.remaining }} clone credit<span v-if="voiceUsage?.remaining !== 1">s</span> remaining this period
+            </span>
+          </p>
         </div>
 
-        <RouterLink :to="{ name: 'dashboard' }" class="nav-link">&larr; Dashboard</RouterLink>
+        <div class="flex flex-wrap gap-3">
+          <RouterLink :to="{ name: 'subscription' }" class="nav-link">Plan & Usage</RouterLink>
+          <RouterLink :to="{ name: 'dashboard' }" class="nav-link">&larr; Dashboard</RouterLink>
+        </div>
       </div>
 
       <section class="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
@@ -233,15 +267,6 @@ function cloneButtonLabel(profile: VoiceProfile) {
               class="field-input"
               placeholder="Bedtime Story Voice"
             />
-          </label>
-
-          <label class="field-checkbox mt-5 flex items-start gap-3 px-4 py-4 text-sm leading-6 text-[var(--app-muted)]">
-            <input
-              v-model="consentConfirmed"
-              type="checkbox"
-              class="mt-1 size-4 rounded border-[var(--app-border-strong)] text-[var(--app-accent)] focus:ring-[var(--app-accent)]"
-            />
-            <span>I confirm I have consent to clone and use this voice for narration.</span>
           </label>
 
           <label class="mt-4 flex items-center gap-3 text-sm text-[var(--app-muted)]">
@@ -389,5 +414,17 @@ function cloneButtonLabel(profile: VoiceProfile) {
     :is-pending="isDeleting"
     @cancel="cancelDelete"
     @confirm="confirmDelete"
+  />
+
+  <ConsentModal
+    v-if="pendingCloneProfileId"
+    title="Accept voice cloning consent"
+    message="Before cloning a narration voice, confirm that you have permission to clone and use this voice in Vocaleaf."
+    confirmation-label="I confirm I have the right to clone and use this voice for narration."
+    confirm-label="Accept and clone"
+    pending-confirm-label="Saving..."
+    :is-pending="consentStore.isSaving"
+    @cancel="cancelVoiceConsent"
+    @confirm="confirmVoiceConsent"
   />
 </template>

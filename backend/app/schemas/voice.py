@@ -10,7 +10,7 @@ from app.models.enums import VoiceProfileStatus, VoiceSampleStatus
 
 class VoiceProfileCreate(BaseModel):
     display_name: str = Field(min_length=1, max_length=100)
-    consent_confirmed: bool
+    consent_confirmed: bool | None = None
     default_for_user: bool = False
 
 

@@ -14,6 +14,7 @@ from app.integrations.r2 import R2Error, R2ObjectNotFoundError, get_r2_client
 from app.models.enums import AssetUploadStatus, VoiceProfileStatus, VoiceSampleStatus
 from app.models.voice_profile import VoiceProfile
 from app.models.voice_sample import VoiceSample
+from app.services.usage import record_voice_clone_created_usage
 from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -144,6 +145,11 @@ async def run_voice_clone_in_session(db: AsyncSession, profile_id: uuid.UUID) ->
         if sample.status == VoiceSampleStatus.PROCESSING:
             sample.status = VoiceSampleStatus.ACCEPTED
 
+    record_voice_clone_created_usage(
+        db,
+        user_id=profile.user_id,
+        provider="elevenlabs",
+    )
     await db.commit()
 
 

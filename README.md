@@ -164,8 +164,6 @@ docs/              # Architecture and design docs
 
 ## 🗺️ Roadmap
 
-- Consent & audit logging
-- Subscriptions & usage tracking
 - Voice deletion & preview samples
 
 ---

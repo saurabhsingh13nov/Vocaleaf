@@ -72,6 +72,28 @@ async def test_create_child_unauthenticated(client: AsyncClient):
     assert resp.status_code == 401
 
 
+async def test_create_child_with_bearer_token(client: AsyncClient):
+    register_resp = await client.post(
+        REGISTER_URL,
+        json={
+            "email": "bearer-parent@example.com",
+            "password": "securepass123",
+            "full_name": "Bearer Parent",
+        },
+    )
+    access_token = register_resp.json()["access_token"]
+
+    client.cookies.clear()
+    resp = await client.post(
+        CHILDREN_URL,
+        json={"name": "Luna"},
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+
+    assert resp.status_code == 201
+    assert resp.json()["name"] == "Luna"
+
+
 # ── List ─────────────────────────────────────────────────────────────
 
 

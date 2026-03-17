@@ -10,10 +10,13 @@ from sqlalchemy.orm import selectinload
 from app.core.config import settings
 from app.integrations.r2 import R2Error, R2ObjectNotFoundError, get_r2_client
 from app.models.asset import Asset
-from app.models.enums import AssetType, AssetUploadStatus, VoiceProfileStatus, VoiceSampleStatus
+from app.models.enums import AssetType, AssetUploadStatus, ConsentType, VoiceProfileStatus, VoiceSampleStatus
 from app.models.voice_profile import VoiceProfile
 from app.models.voice_sample import VoiceSample
 from app.schemas.voice import VoiceProfileCreate, VoiceSampleUploadRequest
+from app.services.audit import record_audit_event
+from app.services.consent import has_current_consent
+from app.services.subscription import SubscriptionError, enforce_voice_clone_allowed
 
 ALLOWED_VOICE_SAMPLE_MIME_TYPES = {
     "audio/webm",
@@ -104,11 +107,11 @@ async def create_voice_profile(
     user_id: uuid.UUID,
     data: VoiceProfileCreate,
 ) -> VoiceProfile:
-    if not data.consent_confirmed:
-        raise VoiceError(
-            "Voice cloning consent is required to create a voice profile",
-            status_code=400,
-        )
+    consent_confirmed = await has_current_consent(
+        db,
+        user_id=user_id,
+        consent_type=ConsentType.VOICE_CLONING,
+    )
 
     if data.default_for_user:
         await db.execute(
@@ -122,10 +125,18 @@ async def create_voice_profile(
         display_name=data.display_name.strip(),
         status=VoiceProfileStatus.PENDING,
         source_type="user_upload",
-        consent_confirmed=True,
+        consent_confirmed=consent_confirmed,
         default_for_user=data.default_for_user,
     )
     db.add(profile)
+    record_audit_event(
+        db,
+        user_id=user_id,
+        entity_type="voice_profile",
+        entity_id=profile.id,
+        event_type="voice_profile.created",
+        event_data={"default_for_user": data.default_for_user},
+    )
     await db.commit()
     await db.refresh(profile, attribute_names=["voice_samples"])
     return profile
@@ -192,8 +203,13 @@ async def request_voice_clone(
     if profile is None:
         raise VoiceError("Voice profile not found", status_code=404)
 
-    if not profile.consent_confirmed:
+    if not await has_current_consent(db, user_id=user_id, consent_type=ConsentType.VOICE_CLONING):
         raise VoiceError("Voice cloning consent is required", status_code=400)
+
+    try:
+        await enforce_voice_clone_allowed(db, user_id=user_id)
+    except SubscriptionError as exc:
+        raise VoiceError(exc.message, status_code=exc.status_code) from exc
 
     if profile.status == VoiceProfileStatus.READY:
         raise VoiceError("Voice profile is already ready", status_code=409)
@@ -207,6 +223,15 @@ async def request_voice_clone(
     profile.status = VoiceProfileStatus.PROCESSING
     profile.provider_voice_id = None
     profile.provider = None
+    profile.consent_confirmed = True
+    record_audit_event(
+        db,
+        user_id=user_id,
+        entity_type="voice_profile",
+        entity_id=profile.id,
+        event_type="voice_clone.requested",
+        event_data={"eligible_sample_count": len(_eligible_clone_samples(profile))},
+    )
     await db.commit()
     await db.refresh(profile)
     await db.refresh(profile, attribute_names=["voice_samples"])
@@ -375,6 +400,14 @@ async def delete_voice_sample(
     if asset is not None:
         await db.delete(asset)
 
+    record_audit_event(
+        db,
+        user_id=user_id,
+        entity_type="voice_sample",
+        entity_id=sample.id,
+        event_type="voice_sample.deleted",
+        event_data={"voice_profile_id": str(profile_id)},
+    )
     await db.commit()
     return True
 
@@ -399,6 +432,14 @@ async def delete_voice_profile(
     for asset in assets:
         await db.delete(asset)
 
+    record_audit_event(
+        db,
+        user_id=user_id,
+        entity_type="voice_profile",
+        entity_id=profile.id,
+        event_type="voice_profile.deleted",
+        event_data={"sample_count": len(profile.voice_samples)},
+    )
     await db.delete(profile)
     await db.commit()
     return True

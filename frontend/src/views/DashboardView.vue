@@ -235,6 +235,31 @@ async function confirmDelete() {
         </div>
 
         <button
+          v-if="auth.user.value?.role === 'staff' || auth.user.value?.role === 'admin'"
+          class="header-action-button"
+          type="button"
+          aria-label="Open admin"
+          @click="$router.push({ name: 'admin' })"
+        >
+          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9m-9 6h9m-9 6h9M4.5 6h.008v.008H4.5V6Zm0 6h.008v.008H4.5V12Zm0 6h.008v.008H4.5V18Z" />
+          </svg>
+          <span>Admin</span>
+        </button>
+
+        <button
+          class="header-action-button"
+          type="button"
+          aria-label="Open subscription"
+          @click="$router.push({ name: 'subscription' })"
+        >
+          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M6 3.75h12a2.25 2.25 0 0 1 2.25 2.25v12A2.25 2.25 0 0 1 18 20.25H6A2.25 2.25 0 0 1 3.75 18V6A2.25 2.25 0 0 1 6 3.75Z" />
+          </svg>
+          <span>Plan</span>
+        </button>
+
+        <button
           class="header-action-button"
           type="button"
           aria-label="Log out"

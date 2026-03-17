@@ -32,6 +32,7 @@ const sampleUser: User = {
   full_name: 'Parent Reader',
   avatar_url: null,
   status: 'active',
+  role: 'customer',
   email_verified_at: null,
   created_at: '2026-03-11T20:00:00Z',
 }
@@ -115,7 +116,7 @@ describe('useAuthStore', () => {
     mockedFetchCurrentUser
       .mockRejectedValueOnce(makeAxiosError(401, 'Not authenticated'))
       .mockResolvedValueOnce(sampleUser)
-    mockedRefreshSession.mockResolvedValue({ message: 'Token refreshed' })
+    mockedRefreshSession.mockResolvedValue({ access_token: 'new-access-token' })
     const authStore = useAuthStore()
 
     const result = await authStore.fetchUser()

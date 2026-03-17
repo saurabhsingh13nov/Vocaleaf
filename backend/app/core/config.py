@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     # Google OAuth
     google_client_id: str = ""
 
+    # Sign in with Apple
+    apple_client_id: str = "com.vocaleaf.MyVocaleaf"
+
     # Google Gemini image generation
     google_genai_api_key: str = ""
     gemini_image_model: str | None = None

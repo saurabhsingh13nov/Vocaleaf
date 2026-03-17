@@ -43,6 +43,7 @@ const sampleUser: User = {
   full_name: 'Parent Reader',
   avatar_url: null,
   status: 'active',
+  role: 'customer',
   email_verified_at: null,
   created_at: '2026-03-11T20:00:00Z',
 }

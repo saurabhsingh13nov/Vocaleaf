@@ -32,7 +32,16 @@ class GoogleAuthRequest(BaseModel):
     credential: str
 
 
+class AppleAuthRequest(BaseModel):
+    credential: str
+
+
 class LinkGoogleRequest(BaseModel):
+    credential: str
+    password: str
+
+
+class LinkAppleRequest(BaseModel):
     credential: str
     password: str
 
@@ -45,9 +54,20 @@ class UserResponse(BaseModel):
     full_name: Optional[str]
     avatar_url: Optional[str]
     status: str
+    role: str
     email_verified_at: Optional[datetime]
     created_at: datetime
 
 
 class MessageResponse(BaseModel):
     message: str
+
+
+class AuthSessionResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    user: UserResponse
+
+
+class RefreshTokenResponse(BaseModel):
+    access_token: str

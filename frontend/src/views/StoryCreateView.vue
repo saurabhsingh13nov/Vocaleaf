@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { useChildrenStore } from '@/stores/children'
 import { useStoriesStore } from '@/stores/stories'
+import { useSubscriptionStore } from '@/stores/subscription'
 import { useVoiceStore } from '@/stores/voice'
 
 const router = useRouter()
 const childrenStore = useChildrenStore()
 const storiesStore = useStoriesStore()
+const subscriptionStore = useSubscriptionStore()
 const voiceStore = useVoiceStore()
 
 const selectedChildId = ref('')
@@ -24,7 +26,11 @@ const localError = ref<string | null>(null)
 const themeOptions = ['Adventure', 'Bedtime', 'Friendship', 'Animals', 'Space', 'Fantasy', 'Nature', 'Ocean']
 const artStyleOptions = ['Watercolor', 'Storybook Classic', 'Modern Illustration', 'Whimsical', 'Dreamy']
 const readingLevelOptions = ['Preschool', 'Early Reader', 'Independent Reader']
-const pageCountOptions = Array.from({ length: 9 }, (_, index) => index + 2)
+const pageCountOptions = computed(() => {
+  const max = subscriptionStore.maxPagesPerStory ?? 10
+  return Array.from({ length: Math.max(max - 1, 1) }, (_, index) => index + 2)
+})
+const storyUsage = computed(() => subscriptionStore.metric('stories_created'))
 
 const readyVoiceProfiles = computed(() =>
   voiceStore.profiles.filter((profile) => profile.status === 'ready'),
@@ -35,11 +41,18 @@ onMounted(async () => {
 
   await Promise.allSettled([
     childrenStore.fetchChildren(),
+    subscriptionStore.fetchSummary(),
     voiceStore.fetchProfiles(),
   ])
 
   if (!selectedChildId.value && childrenStore.children[0]) {
     selectedChildId.value = childrenStore.children[0].id
+  }
+})
+
+watch(pageCountOptions, (options) => {
+  if (options.length && !options.includes(pageCount.value)) {
+    pageCount.value = options[options.length - 1] ?? 6
   }
 })
 
@@ -87,6 +100,25 @@ async function handleSubmit() {
       </div>
 
       <form class="surface-card px-6 py-6 sm:px-8" @submit.prevent="handleSubmit">
+        <div
+          v-if="subscriptionStore.summary"
+          class="mb-6 rounded-[28px] border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-5 py-4"
+        >
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p class="page-kicker">Current plan</p>
+              <p class="mt-1 text-lg font-semibold capitalize text-[var(--app-ink)]">
+                {{ subscriptionStore.summary.plan.name }}
+              </p>
+            </div>
+            <RouterLink :to="{ name: 'subscription' }" class="nav-link">View full usage</RouterLink>
+          </div>
+          <p class="mt-3 text-sm text-[var(--app-muted)]">
+            {{ storyUsage?.remaining ?? 0 }} story credit<span v-if="storyUsage?.remaining !== 1">s</span> remaining this period.
+            Stories on this plan can be up to {{ subscriptionStore.summary.plan.max_pages_per_story ?? 'unlimited' }} pages.
+          </p>
+        </div>
+
         <div class="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
           <section class="space-y-5">
             <label class="block">
@@ -205,7 +237,7 @@ async function handleSubmit() {
           <button
             type="submit"
             class="primary-button"
-            :disabled="storiesStore.isLoading || childrenStore.isLoading || !childrenStore.children.length"
+            :disabled="storiesStore.isLoading || childrenStore.isLoading || !childrenStore.children.length || storyUsage?.remaining === 0"
           >
             Create Story
           </button>

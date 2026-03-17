@@ -155,3 +155,42 @@ async def get_asset_download_url(
         raise AssetError(str(exc), status_code=500) from exc
 
     return url, expires_at
+
+
+async def get_owned_asset_download_urls(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    asset_ids: set[uuid.UUID],
+) -> dict[uuid.UUID, tuple[str, datetime]]:
+    if not asset_ids:
+        return {}
+
+    result = await db.execute(
+        select(Asset).where(
+            Asset.id.in_(asset_ids),
+            Asset.user_id == user_id,
+            Asset.deleted_at.is_(None),
+        )
+    )
+    assets = result.scalars().all()
+    expires_at = _expiry(settings.asset_read_url_expire_seconds)
+
+    urls_by_asset_id: dict[uuid.UUID, tuple[str, datetime]] = {}
+    for asset in assets:
+        if asset.asset_type == AssetType.VOICE_SAMPLE:
+            continue
+        if asset.upload_status != AssetUploadStatus.READY:
+            continue
+
+        try:
+            url = get_r2_client().generate_download_url(
+                object_key=asset.object_key,
+                expires_in=settings.asset_read_url_expire_seconds,
+            )
+        except R2Error as exc:
+            raise AssetError(str(exc), status_code=500) from exc
+
+        urls_by_asset_id[asset.id] = (url, expires_at)
+
+    return urls_by_asset_id

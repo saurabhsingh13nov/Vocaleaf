@@ -11,6 +11,7 @@ const sampleUser: User = {
   full_name: 'Reader Parent',
   avatar_url: null,
   status: 'active',
+  role: 'customer',
   email_verified_at: null,
   created_at: '2026-03-11T20:00:00Z',
 }
@@ -108,6 +109,26 @@ describe('router auth guards', () => {
     await router.push('/stories/story-123')
 
     expect(router.currentRoute.value.name).toBe('login')
+  })
+
+  it('redirects non-staff users away from admin', async () => {
+    const authStore = useAuthStore(pinia)
+    authStore.user = sampleUser
+    authStore.isInitialized = true
+
+    await router.push('/admin')
+
+    expect(router.currentRoute.value.name).toBe('dashboard')
+  })
+
+  it('allows staff users to access admin', async () => {
+    const authStore = useAuthStore(pinia)
+    authStore.user = { ...sampleUser, role: 'staff' }
+    authStore.isInitialized = true
+
+    await router.push('/admin')
+
+    expect(router.currentRoute.value.name).toBe('admin')
   })
 
   it('clears user state and redirects to login when initialization throws', async () => {
