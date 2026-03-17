@@ -72,6 +72,7 @@ class TestRegister:
         data = resp.json()
         assert data["user"]["primary_email"] == "new@example.com"
         assert data["user"]["full_name"] == "New User"
+        assert data["user"]["role"] == "customer"
         assert data["access_token"]
         assert data["refresh_token"]
         assert "access_token" in resp.cookies

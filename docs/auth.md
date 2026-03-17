@@ -118,9 +118,11 @@ Current role values:
 
 Role rules:
 	•	new accounts default to `customer`
+	•	all signup flows create `customer` users only; elevated roles are assigned later for internal accounts
 	•	`staff` and `admin` can access the internal `/admin` console and `/api/admin/*`
 	•	only `admin` can edit base plans and change another user’s role
 	•	valid roles live in the `user_roles` table, and `users.role` is a FK to `user_roles.code`
+	•	`staff` and `admin` bypass current subscription-backed usage limits, but they still must satisfy legal and voice-cloning consent checks
 
 auth_identities
 

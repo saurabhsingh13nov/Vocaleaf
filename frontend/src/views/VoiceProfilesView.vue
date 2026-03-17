@@ -5,11 +5,13 @@ import ConsentModal from '@/components/ConsentModal.vue'
 import ConfirmModal from '@/components/ConfirmModal.vue'
 import VoiceRecorder from '@/components/VoiceRecorder.vue'
 import VoiceSampleList from '@/components/VoiceSampleList.vue'
+import { useAuth } from '@/composables/useAuth'
 import type { VoiceProfile } from '@/services/voice'
 import { useConsentStore } from '@/stores/consent'
 import { useSubscriptionStore } from '@/stores/subscription'
 import { useVoiceStore } from '@/stores/voice'
 
+const auth = useAuth()
 const consentStore = useConsentStore()
 const subscriptionStore = useSubscriptionStore()
 const store = useVoiceStore()
@@ -218,6 +220,8 @@ function cloneButtonLabel(profile: VoiceProfile) {
 }
 
 const voiceUsage = computed(() => subscriptionStore.metric('voice_clones_created'))
+const isElevated = computed(() => auth.user.value?.role === 'staff' || auth.user.value?.role === 'admin')
+const roleLabel = computed(() => auth.user.value?.role ?? 'customer')
 </script>
 
 <template>
@@ -231,11 +235,20 @@ const voiceUsage = computed(() => subscriptionStore.metric('voice_clones_created
             Build narration voices deliberately: create a profile, upload private samples, and trigger cloning only when the profile is ready.
           </p>
           <p class="mt-3 text-sm text-[var(--app-muted)]">
+            Role:
+            <span class="font-medium uppercase tracking-[0.12em] text-[var(--app-accent-strong)]">
+              {{ roleLabel }}
+            </span>
+            <span v-if="isElevated">
+              · This account is unrestricted for voice and usage limits.
+            </span>
+          </p>
+          <p class="mt-2 text-sm text-[var(--app-muted)]">
             Voice cloning consent:
             <span class="font-medium text-[var(--app-ink)]">
               {{ consentStore.hasVoiceCloningConsent ? 'accepted' : 'required before first clone' }}
             </span>
-            <span v-if="voiceUsage?.remaining !== null">
+            <span v-if="!isElevated && voiceUsage?.remaining !== null">
               · {{ voiceUsage?.remaining }} clone credit<span v-if="voiceUsage?.remaining !== 1">s</span> remaining this period
             </span>
           </p>

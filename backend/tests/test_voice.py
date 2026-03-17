@@ -7,12 +7,15 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
+from app.core.roles import ROLE_STAFF
 from app.db.session import get_db
 from app.integrations.elevenlabs import ElevenLabsError
 from app.integrations.r2 import R2ObjectData, R2ObjectMetadata, R2ObjectNotFoundError
 from app.main import app as fastapi_app
 from app.models.asset import Asset
 from app.models.enums import AssetType, AssetUploadStatus, VoiceProfileStatus, VoiceSampleStatus
+from app.models.usage_record import UsageRecord
+from app.models.user import User
 from app.models.voice_profile import VoiceProfile
 from app.models.voice_sample import VoiceSample
 from app.workers.voice_clone_worker import (
@@ -95,6 +98,11 @@ async def get_asset(db_session, asset_id: str) -> Asset:
         .where(Asset.id == uuid.UUID(asset_id))
         .execution_options(populate_existing=True)
     )
+    return result.scalar_one()
+
+
+async def get_user_by_email(db_session, email: str) -> User:
+    result = await db_session.execute(select(User).where(User.primary_email == email))
     return result.scalar_one()
 
 
@@ -529,6 +537,51 @@ async def test_clone_voice_profile_requires_current_voice_consent(client: AsyncC
 
     assert response.status_code == 400
     assert "consent" in response.json()["detail"].lower()
+
+
+async def test_elevated_users_can_clone_even_after_customer_quota_is_exhausted(client: AsyncClient, db_session, monkeypatch):
+    fake_r2 = FakeR2Client()
+    monkeypatch.setattr("app.services.voice.get_r2_client", lambda: fake_r2)
+
+    task_calls: list[str] = []
+    monkeypatch.setattr(
+        "app.workers.voice_clone_worker.clone_voice_profile_task.delay",
+        lambda profile_id: task_calls.append(profile_id),
+    )
+
+    await register_and_get_client(client, suffix="-staff")
+    user = await get_user_by_email(db_session, "voice-user-staff@example.com")
+    user.role = ROLE_STAFF
+
+    db_session.add(
+        UsageRecord(
+            user_id=user.id,
+            usage_type="voice_clones_created",
+            quantity=1,
+            unit="voice_clone",
+            provider="system",
+        )
+    )
+    await db_session.commit()
+
+    profile = await create_profile(client)
+    upload_resp = await client.post(
+        f"{VOICE_PROFILE_URL}/{profile['id']}/samples",
+        json={
+            "mime_type": "audio/webm",
+            "file_size_bytes": 1024,
+            "duration_seconds": 5.1,
+        },
+    )
+    asset = await get_asset(db_session, upload_resp.json()["asset_id"])
+    fake_r2.objects[asset.object_key] = R2ObjectMetadata(file_size_bytes=1024, checksum="etag-clone")
+    await client.post(f"{VOICE_PROFILE_URL}/{profile['id']}/samples/{upload_resp.json()['sample_id']}/confirm")
+    await accept_voice_cloning_consent(client)
+
+    response = await client.post(f"{VOICE_PROFILE_URL}/{profile['id']}/clone")
+
+    assert response.status_code == 202
+    assert task_calls == [profile["id"]]
 
 
 async def test_run_voice_clone_sets_profile_ready_and_marks_samples_accepted(

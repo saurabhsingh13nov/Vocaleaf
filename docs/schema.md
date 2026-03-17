@@ -115,6 +115,7 @@ Important fields:
 
 Current implementation note:
 	•	`role` is a FK-backed role code used for internal authorization: `customer`, `staff`, `admin`
+	•	new auth-created accounts always persist `customer`; elevated roles are assigned operationally after account creation
 
 user_roles
 
@@ -130,6 +131,7 @@ Important fields:
 Current implementation note:
 	•	`users.role` references `user_roles.code`
 	•	the app currently seeds `customer`, `staff`, and `admin`
+	•	`staff` and `admin` act as unrestricted internal roles for subscription-backed quota checks
 
 auth_identities
 
@@ -475,6 +477,7 @@ This allows feature gating and entitlement checks.
 Current implementation note:
 	•	new accounts receive an auto-assigned `free` subscription period
 	•	before Stripe exists, plan changes happen through an internal CLI or admin API that creates a new active subscription row
+	•	`staff` and `admin` still keep subscription rows for reporting, but effective story/page/voice/audio limits resolve to `null`
 
 user_entitlement_overrides
 
@@ -601,6 +604,7 @@ Current implementation note:
 	•	deletions do not refund usage
 	•	`images_generated` is recorded for visibility, but the current plans do not enforce an image quota
 	•	effective quota checks resolve in this order: current subscription plan, active entitlement override, then active usage-credit grants
+	•	if `users.role` is `staff` or `admin`, the resolved story/page/voice/audio limits are treated as unrestricted after normal entitlement resolution
 
 This supports:
 	•	analytics

@@ -428,6 +428,7 @@ User -> Frontend -> FastAPI Auth
      -> users/auth_identities lookup or creation
      -> free subscription auto-assigned for first-time accounts
      -> role-aware session established (`customer`, `staff`, `admin`)
+     -> all new signups remain `customer` unless an internal operator changes the role later
      -> session/token issued
      -> consent status fetched
      -> legal consent modal shown until current terms/privacy versions are accepted
@@ -449,6 +450,7 @@ Story generation flow
 User -> Frontend -> FastAPI Story API
      -> active subscription + plan limits checked
      -> effective entitlements resolved from plan + override + grants
+     -> staff/admin roles bypass quota enforcement while consent checks still apply
      -> create story + generation job
      -> enqueue full story generation task
      -> text worker generates page plan + page text

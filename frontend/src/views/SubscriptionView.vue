@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 
+import { useAuth } from '@/composables/useAuth'
 import { useSubscriptionStore } from '@/stores/subscription'
 import type { UsageMetric } from '@/services/subscription'
 
+const auth = useAuth()
 const subscriptionStore = useSubscriptionStore()
+const isElevated = computed(() => auth.user.value?.role === 'staff' || auth.user.value?.role === 'admin')
+const roleLabel = computed(() => auth.user.value?.role ?? 'customer')
 
 const usageEntries = computed(() => {
   const summary = subscriptionStore.summary
@@ -74,9 +78,15 @@ function usageCopy(used: number, limit: number | null, unit: string) {
             <h2 class="mt-2 text-4xl font-semibold capitalize text-[var(--app-ink)]">
               {{ subscriptionStore.summary.plan.name }}
             </h2>
+            <p class="mt-3 text-sm font-medium uppercase tracking-[0.18em] text-[var(--app-accent-strong)]">
+              Role: {{ roleLabel }}
+            </p>
             <p class="mt-3 text-sm leading-6 text-[var(--app-muted)]">
               Active through
               {{ subscriptionStore.summary.current_period_end ? new Date(subscriptionStore.summary.current_period_end).toLocaleDateString() : 'an open-ended period' }}.
+            </p>
+            <p v-if="isElevated" class="mt-3 text-sm leading-6 text-[var(--app-muted)]">
+              This account is unrestricted for story and usage limits because it uses an elevated internal role.
             </p>
           </div>
 
@@ -119,8 +129,11 @@ function usageCopy(used: number, limit: number | null, unit: string) {
             <p class="mt-3 text-sm leading-6 text-[var(--app-muted)]">
               {{ usageCopy(entry.metric.used, entry.metric.limit, entry.metric.unit) }}
             </p>
-            <p v-if="entry.metric.remaining !== null" class="mt-4 text-sm font-medium text-[var(--app-accent-strong)]">
+            <p v-if="!isElevated && entry.metric.remaining !== null" class="mt-4 text-sm font-medium text-[var(--app-accent-strong)]">
               {{ entry.metric.remaining }} remaining this period
+            </p>
+            <p v-else-if="isElevated" class="mt-4 text-sm font-medium text-[var(--app-accent-strong)]">
+              No limit applies for the {{ roleLabel }} role.
             </p>
           </article>
         </section>

@@ -2,11 +2,13 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
+import { useAuth } from '@/composables/useAuth'
 import { useChildrenStore } from '@/stores/children'
 import { useStoriesStore } from '@/stores/stories'
 import { useSubscriptionStore } from '@/stores/subscription'
 import { useVoiceStore } from '@/stores/voice'
 
+const auth = useAuth()
 const router = useRouter()
 const childrenStore = useChildrenStore()
 const storiesStore = useStoriesStore()
@@ -26,7 +28,12 @@ const localError = ref<string | null>(null)
 const themeOptions = ['Adventure', 'Bedtime', 'Friendship', 'Animals', 'Space', 'Fantasy', 'Nature', 'Ocean']
 const artStyleOptions = ['Watercolor', 'Storybook Classic', 'Modern Illustration', 'Whimsical', 'Dreamy']
 const readingLevelOptions = ['Preschool', 'Early Reader', 'Independent Reader']
+const isElevated = computed(() => auth.user.value?.role === 'staff' || auth.user.value?.role === 'admin')
+const roleLabel = computed(() => auth.user.value?.role ?? 'customer')
 const pageCountOptions = computed(() => {
+  if (isElevated.value) {
+    return []
+  }
   const max = subscriptionStore.maxPagesPerStory ?? 10
   return Array.from({ length: Math.max(max - 1, 1) }, (_, index) => index + 2)
 })
@@ -66,6 +73,11 @@ async function handleSubmit() {
 
   if (!prompt.value.trim() && !theme.value.trim()) {
     localError.value = 'Add a story prompt or choose a theme before continuing.'
+    return
+  }
+
+  if (pageCount.value < 2) {
+    localError.value = 'Stories must have at least 2 pages.'
     return
   }
 
@@ -110,10 +122,16 @@ async function handleSubmit() {
               <p class="mt-1 text-lg font-semibold capitalize text-[var(--app-ink)]">
                 {{ subscriptionStore.summary.plan.name }}
               </p>
+              <p class="mt-2 text-sm font-medium uppercase tracking-[0.18em] text-[var(--app-accent-strong)]">
+                Role: {{ roleLabel }}
+              </p>
             </div>
             <RouterLink :to="{ name: 'subscription' }" class="nav-link">View full usage</RouterLink>
           </div>
-          <p class="mt-3 text-sm text-[var(--app-muted)]">
+          <p v-if="isElevated" class="mt-3 text-sm text-[var(--app-muted)]">
+            This {{ roleLabel }} account is unrestricted for story and narration limits.
+          </p>
+          <p v-else class="mt-3 text-sm text-[var(--app-muted)]">
             {{ storyUsage?.remaining ?? 0 }} story credit<span v-if="storyUsage?.remaining !== 1">s</span> remaining this period.
             Stories on this plan can be up to {{ subscriptionStore.summary.plan.max_pages_per_story ?? 'unlimited' }} pages.
           </p>
@@ -178,7 +196,7 @@ async function handleSubmit() {
 
             <div>
               <p class="field-label">Page count</p>
-              <div class="flex flex-wrap gap-2">
+              <div v-if="!isElevated" class="flex flex-wrap gap-2">
                 <button
                   v-for="count in pageCountOptions"
                   :key="count"
@@ -189,6 +207,19 @@ async function handleSubmit() {
                 >
                   {{ count }}
                 </button>
+              </div>
+              <div v-else class="space-y-2">
+                <input
+                  v-model.number="pageCount"
+                  class="field-input"
+                  min="2"
+                  name="target_page_count"
+                  step="1"
+                  type="number"
+                />
+                <p class="text-sm text-[var(--app-muted)]">
+                  Elevated accounts can choose any page count of 2 or more.
+                </p>
               </div>
             </div>
 
@@ -237,7 +268,7 @@ async function handleSubmit() {
           <button
             type="submit"
             class="primary-button"
-            :disabled="storiesStore.isLoading || childrenStore.isLoading || !childrenStore.children.length || storyUsage?.remaining === 0"
+            :disabled="storiesStore.isLoading || childrenStore.isLoading || !childrenStore.children.length || (!isElevated && storyUsage?.remaining === 0)"
           >
             Create Story
           </button>

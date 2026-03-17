@@ -15,7 +15,7 @@ class StoryCreate(BaseModel):
     voice_profile_id: uuid.UUID | None = None
     prompt: str | None = Field(default=None, max_length=2000)
     theme: str | None = Field(default=None, max_length=100)
-    target_page_count: int = Field(default=6, ge=2, le=10)
+    target_page_count: int = Field(default=6, ge=2)
     reading_level: str | None = Field(default=None, max_length=50)
     art_style: str | None = Field(default=None, max_length=100)
     language: str = Field(default="en", min_length=2, max_length=10)

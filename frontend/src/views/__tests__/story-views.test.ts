@@ -102,8 +102,8 @@ const sampleUser: User = {
   created_at: '2026-03-11T20:00:00Z',
 }
 
-function makeAuthState() {
-  const user = ref<User | null>(sampleUser)
+function makeAuthState(userOverride: Partial<User> = {}) {
+  const user = ref<User | null>({ ...sampleUser, ...userOverride })
 
   return {
     clearUser: vi.fn(),
@@ -247,6 +247,80 @@ describe('story views', () => {
       }),
     )
     expect(pushMock).toHaveBeenCalledWith({ name: 'story-detail', params: { storyId: 'story-1' } })
+  })
+
+  it('shows unrestricted copy for elevated accounts and allows free-form page counts', async () => {
+    useAuthMock.mockReturnValue(makeAuthState({ role: 'admin' }))
+    mockedGetSubscriptionSummary.mockResolvedValue({
+      id: 'subscription-1',
+      status: 'active',
+      current_period_start: '2026-03-01T00:00:00Z',
+      current_period_end: '2026-03-31T00:00:00Z',
+      plan: {
+        id: 'plan-1',
+        code: 'free',
+        name: 'free',
+        monthly_story_limit: null,
+        max_pages_per_story: null,
+        image_quality_mode: 'standard',
+        voice_clone_limit: null,
+        monthly_audio_chars_limit: null,
+        price_cents: 0,
+      },
+      usage: {
+        stories_created: { used: 4, limit: null, remaining: null, unit: 'story' },
+        voice_clones_created: { used: 2, limit: null, remaining: null, unit: 'voice_clone' },
+        audio_chars_synthesized: { used: 42000, limit: null, remaining: null, unit: 'character' },
+        images_generated: { used: 18, limit: null, remaining: null, unit: 'page_image' },
+      },
+    })
+    mockedCreateStory.mockResolvedValue({
+      id: 'story-1',
+      user_id: 'user-1',
+      child_id: 'child-1',
+      voice_profile_id: null,
+      title: null,
+      prompt: 'A long admin story',
+      theme: null,
+      status: 'generating',
+      target_page_count: 18,
+      reading_level: null,
+      language: 'en',
+      art_style: null,
+      latest_error_message: null,
+      can_resume_missing_outputs: false,
+      created_at: '2026-03-13T20:00:00Z',
+      updated_at: '2026-03-13T20:00:00Z',
+      pages: [],
+    })
+
+    const wrapper = mount(StoryCreateView, {
+      global: {
+        stubs: {
+          RouterLink: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Role: admin')
+    expect(wrapper.text()).toContain('This admin account is unrestricted for story and narration limits.')
+    expect(wrapper.find('input[name="target_page_count"]').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('story credits remaining this period')
+
+    await wrapper.get('select[name="child_id"]').setValue('child-1')
+    await wrapper.get('textarea[name="prompt"]').setValue('A long admin story')
+    await wrapper.get('input[name="target_page_count"]').setValue('18')
+    await wrapper.get('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(mockedCreateStory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        child_id: 'child-1',
+        prompt: 'A long admin story',
+        target_page_count: 18,
+      }),
+    )
   })
 
   it('renders generated story pages in the detail view', async () => {

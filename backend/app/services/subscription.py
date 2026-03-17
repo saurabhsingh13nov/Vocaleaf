@@ -10,6 +10,7 @@ from typing import Any
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.roles import UNRESTRICTED_ROLE_CODES
 from app.models.enums import SubscriptionStatus
 from app.models.plan import Plan
 from app.models.subscription import Subscription
@@ -111,6 +112,10 @@ class SubscriptionContext:
     usage_totals: dict[str, float]
     active_override: UserEntitlementOverride | None
     active_grants: list[UsageCreditGrant]
+
+
+def _is_unrestricted_role(role: str | None) -> bool:
+    return role in UNRESTRICTED_ROLE_CODES
 
 
 def _active_window_clause(model) -> Any:
@@ -362,6 +367,20 @@ def _build_effective_plan(
     )
 
 
+def _with_unrestricted_limits(plan: EffectivePlan) -> EffectivePlan:
+    return EffectivePlan(
+        id=plan.id,
+        code=plan.code,
+        name=plan.name,
+        monthly_story_limit=None,
+        max_pages_per_story=None,
+        image_quality_mode=plan.image_quality_mode,
+        voice_clone_limit=None,
+        monthly_audio_chars_limit=None,
+        price_cents=plan.price_cents,
+    )
+
+
 async def create_subscription(
     db: AsyncSession,
     *,
@@ -432,6 +451,7 @@ async def get_subscription_context(
     *,
     user_id: uuid.UUID,
 ) -> SubscriptionContext:
+    user = await _require_user_by_id(db, user_id=user_id)
     _plans, seeded = await ensure_seeded_plans(db)
     subscription, created = await ensure_user_has_free_subscription(db, user_id=user_id)
     if seeded or created:
@@ -454,6 +474,8 @@ async def get_subscription_context(
         active_override=active_override,
         active_grants=active_grants,
     )
+    if _is_unrestricted_role(user.role):
+        effective_plan = _with_unrestricted_limits(effective_plan)
     return SubscriptionContext(
         subscription=subscription,
         plan=subscription.plan,

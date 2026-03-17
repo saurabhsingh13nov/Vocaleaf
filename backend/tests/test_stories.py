@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
+from app.core.roles import ROLE_STAFF
 from app.db.session import get_db
 from app.main import app as fastapi_app
 from app.models.asset import Asset
@@ -185,7 +186,36 @@ async def test_create_story_validates_page_count_bounds(client: AsyncClient, mon
             "target_page_count": 11,
         },
     )
-    assert too_large.status_code == 422
+    assert too_large.status_code == 403
+    assert "allows up to 6 pages" in too_large.json()["detail"].lower()
+
+
+async def test_elevated_users_can_exceed_customer_story_limits(client: AsyncClient, db_session, monkeypatch):
+    monkeypatch.setattr(
+        "app.workers.text_worker.generate_story_text_task.delay",
+        lambda story_id, job_id: None,
+    )
+
+    await register_and_get_client(client, suffix="-staff")
+    user = await get_user_by_email(db_session, "story-user-staff@example.com")
+    user.role = ROLE_STAFF
+    await db_session.commit()
+
+    child = await create_child(client, name="Luna")
+
+    for index in range(4):
+        response = await client.post(
+            STORIES_URL,
+            json={
+                "child_id": child["id"],
+                "prompt": f"Staff story {index}",
+                "target_page_count": 11 if index == 3 else 6,
+            },
+        )
+        assert response.status_code == 202
+
+    fourth_story = response.json()
+    assert fourth_story["target_page_count"] == 11
 
 
 async def test_create_story_rejects_other_users_child(client: AsyncClient, db_session, monkeypatch):

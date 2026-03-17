@@ -1,10 +1,13 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
+import { computed, ref } from 'vue'
 
+import type { User } from '@/services/auth'
 import VoiceProfilesView from '@/views/VoiceProfilesView.vue'
 import { getConsentStatus, acceptConsents } from '@/services/consents'
 import { getSubscriptionSummary } from '@/services/subscription'
+import { useAuth } from '@/composables/useAuth'
 import {
   cloneVoiceProfile,
   createVoiceProfile,
@@ -13,6 +16,12 @@ import {
   getVoiceProfile,
   getVoiceProfiles,
 } from '@/services/voice'
+
+const useAuthMock = vi.mocked(useAuth)
+
+vi.mock('@/composables/useAuth', () => ({
+  useAuth: vi.fn(),
+}))
 
 vi.mock('vue-router', async () => {
   const actual = await vi.importActual<typeof import('vue-router')>('vue-router')
@@ -59,6 +68,37 @@ const mockedDeleteVoiceProfile = vi.mocked(deleteVoiceProfile)
 const mockedDeleteVoiceSample = vi.mocked(deleteVoiceSample)
 const mockedGetSubscriptionSummary = vi.mocked(getSubscriptionSummary)
 
+const sampleUser: User = {
+  id: 'user-1',
+  primary_email: 'voice@example.com',
+  full_name: 'Voice User',
+  avatar_url: null,
+  status: 'active',
+  role: 'customer',
+  email_verified_at: null,
+  created_at: '2026-03-13T20:00:00Z',
+}
+
+function makeAuthState(userOverride: Partial<User> = {}) {
+  const user = ref<User | null>({ ...sampleUser, ...userOverride })
+
+  return {
+    clearUser: vi.fn(),
+    fetchUser: vi.fn(),
+    getErrorMessage: vi.fn(() => 'Friendly error message'),
+    isAuthenticated: computed(() => user.value !== null),
+    isInitialized: ref(true),
+    isLoading: ref(false),
+    link: vi.fn(),
+    linkWithGoogle: vi.fn(),
+    login: vi.fn(),
+    loginWithGoogle: vi.fn(),
+    logout: vi.fn(),
+    register: vi.fn(),
+    user,
+  } as unknown as ReturnType<typeof useAuth>
+}
+
 describe('VoiceProfilesView', () => {
   function mountView() {
     return mount(VoiceProfilesView, {
@@ -74,6 +114,7 @@ describe('VoiceProfilesView', () => {
     vi.clearAllMocks()
     document.body.innerHTML = ''
     setActivePinia(createPinia())
+    useAuthMock.mockReturnValue(makeAuthState())
     mockedAcceptConsents.mockResolvedValue({
       items: [
         {
@@ -415,5 +456,39 @@ describe('VoiceProfilesView', () => {
 
     expect(mockedCloneVoiceProfile).toHaveBeenCalledWith('profile-1')
     expect(wrapper.text()).toContain('Cloning...')
+  })
+
+  it('shows unrestricted role messaging for elevated users', async () => {
+    useAuthMock.mockReturnValue(makeAuthState({ role: 'staff' }))
+    mockedGetSubscriptionSummary.mockResolvedValue({
+      id: 'subscription-1',
+      status: 'active',
+      current_period_start: '2026-03-01T00:00:00Z',
+      current_period_end: '2026-03-31T00:00:00Z',
+      plan: {
+        id: 'plan-1',
+        code: 'free',
+        name: 'free',
+        monthly_story_limit: null,
+        max_pages_per_story: null,
+        image_quality_mode: 'standard',
+        voice_clone_limit: null,
+        monthly_audio_chars_limit: null,
+        price_cents: 0,
+      },
+      usage: {
+        stories_created: { used: 0, limit: null, remaining: null, unit: 'story' },
+        voice_clones_created: { used: 3, limit: null, remaining: null, unit: 'voice_clone' },
+        audio_chars_synthesized: { used: 15000, limit: null, remaining: null, unit: 'character' },
+        images_generated: { used: 0, limit: null, remaining: null, unit: 'page_image' },
+      },
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Role: staff')
+    expect(wrapper.text()).toContain('This account is unrestricted for voice and usage limits.')
+    expect(wrapper.text()).not.toContain('clone credits remaining this period')
   })
 })

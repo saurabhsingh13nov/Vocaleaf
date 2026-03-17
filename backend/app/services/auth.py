@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.roles import ROLE_CUSTOMER
 from app.core.security import hash_password, password_needs_rehash, verify_password
 from app.models.auth_identity import AuthIdentity
 from app.models.enums import AuthProvider, UserStatus
@@ -68,6 +69,7 @@ async def register_user(
         primary_email=email,
         full_name=full_name,
         status=UserStatus.ACTIVE,
+        role=ROLE_CUSTOMER,
     )
     db.add(user)
     await db.flush()  # Get user.id
@@ -262,6 +264,7 @@ async def _authenticate_oauth_user(
         full_name=full_name,
         avatar_url=avatar_url,
         status=UserStatus.ACTIVE,
+        role=ROLE_CUSTOMER,
         email_verified_at=now if email_verified else None,
         last_login_at=now,
     )
